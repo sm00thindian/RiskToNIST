@@ -13,46 +13,88 @@ def download_file(url, filename):
     """
     filepath = os.path.join("data", filename)
     if not os.path.exists(filepath):
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        with open(filepath, "wb") as f:
-            f.write(response.content)
-        print(f"Downloaded {filename}")
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            with open(filepath, "wb") as f:
+                f.write(response.content)
+            print(f"Downloaded {filename}")
+        except requests.RequestException as e:
+            print(f"Error downloading {filename}: {e}")
+            raise
     else:
         print(f"{filename} already exists, skipping download.")
 
-def extract_zip(zip_path, extract_to):
-    """Extract a ZIP file to the specified directory.
+def extract_zip(zip_path, extract_to, output_filename=None):
+    """Extract a ZIP file to the specified directory, optionally renaming the output.
 
     Args:
         zip_path (str): Path to the ZIP file.
         extract_to (str): Directory to extract the files to.
+        output_filename (str, optional): Rename the extracted file to this name.
     """
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(extract_to)
-    print(f"Extracted {zip_path} to {extract_to}")
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_to)
+        print(f"Extracted {zip_path} to {extract_to}")
+        if output_filename:
+            # Rename the first extracted file (assuming one main file)
+            extracted_files = [f for f in os.listdir(extract_to) if not f.startswith('__MACOSX')]
+            if extracted_files:
+                os.rename(
+                    os.path.join(extract_to, extracted_files[0]),
+                    os.path.join(extract_to, output_filename)
+                )
+                print(f"Renamed extracted file to {output_filename}")
+    except zipfile.BadZipFile as e:
+        print(f"Error extracting {zip_path}: {e}")
+        raise
 
 def download_datasets():
     """Download all required datasets."""
     # NVD feeds (ZIP files)
     nvd_feeds = [
-        ("https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-2025.json.zip", "nvdcve-1.1-2025.json.zip"),
-        ("https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-recent.json.zip", "nvdcve-1.1-recent.json.zip"),
-        ("https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-modified.json.zip", "nvdcve-1.1-modified.json.zip"),
+        ("https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-2025.json.zip", "nvdcve-1.1-2025.json.zip", "nvdcve-1.1-2025.json"),
+        ("https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-recent.json.zip", "nvdcve-1.1-recent.json.zip", "nvdcve-1.1-recent.json"),
+        ("https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-modified.json.zip", "nvdcve-1.1-modified.json.zip", "nvdcve-1.1-modified.json"),
     ]
-    for url, zip_filename in nvd_feeds:
+    for url, zip_filename, output_filename in nvd_feeds:
         zip_path = os.path.join("data", zip_filename)
         download_file(url, zip_filename)
-        extract_zip(zip_path, "data")
-        # Optionally remove the ZIP file after extraction
+        extract_zip(zip_path, "data", output_filename)
+        # Optionally remove the ZIP file
         # os.remove(zip_path)
 
-    # Other datasets (direct files)
-    other_datasets = [
-        ("https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv", "kev.csv"),
-        ("https://attack.mitre.org/docs/enterprise-attack.json", "attack.json"),  # Assuming direct JSON
-        ("https://www.unb.ca/cic/datasets/ids-2017/GeneratedLabelledFlows.csv", "cic_ids2017.csv"),
-        ("https://www.stratosphereips.org/datasets/summary.csv", "stratosphere.csv"),
-    ]
-    for url, filename in other_datasets:
-        download_file(url, filename)
+    # CISA KEV Catalog (CSV)
+    download_file(
+        "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv",
+        "kev.csv"
+    )
+
+    # MITRE ATT&CK (JSON, potentially ZIP)
+    attack_url = "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json"
+    attack_filename = "attack.json"
+    try:
+        download_file(attack_url, attack_filename)
+    except requests.RequestException:
+        # Fallback to ZIP if direct JSON fails
+        attack_zip_url = "https://attack.mitre.org/docs/ATTACK_Domain_v15.0_JSON.zip"
+        attack_zip_filename = "attack.zip"
+        zip_path = os.path.join("data", attack_zip_filename)
+        download_file(attack_zip_url, attack_zip_filename)
+        extract_zip(zip_path, "data", attack_filename)
+        # os.remove(zip_path)
+
+    # CIC-IDS2017 (ZIP containing CSVs)
+    cic_url = "https://www.unb.ca/cic/datasets/ids-2017/GeneratedLabelledFlows.zip"
+    cic_zip_filename = "cic_ids2017.zip"
+    cic_output_filename = "cic_ids2017.csv"
+    zip_path = os.path.join("data", cic_zip_filename)
+    download_file(cic_url, cic_zip_filename)
+    extract_zip(zip_path, "data", cic_output_filename)  # Assumes a main CSV file
+
+    # Stratosphere IPS (CSV, assuming CTU-13 summary)
+    download_file(
+        "https://mcfp.felk.cvut.cz/publicDatasets/CTU-13-Dataset/CTU-13-Dataset.csv",
+        "stratosphere.csv"
+    )
