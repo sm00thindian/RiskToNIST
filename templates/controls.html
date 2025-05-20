@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RiskToNIST Control Prioritization</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>NIST 800-53 Control Prioritization Based on Risk</h1>
+    <table>
+        <tr>
+            <th>Control ID</th>
+            <th>Name</th>
+            <th>Risks</th>
+            <th>Priority Score</th>
+        </tr>
+        {% for control in controls %}
+        <tr>
+            <td>{{ control.id }}</td>
+            <td>{{ control.name }}</td>
+            <td>{{ control.risks | join(', ') }}</td>
+            <td>{{ "%.2f" | format(control.score) }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
