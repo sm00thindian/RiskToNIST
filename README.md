@@ -1,12 +1,13 @@
 # RiskToNIST
 ## Project Overview
 The project, named RiskToNIST, is a Python-based tool that:
-•  Downloads risk indicator datasets from public sources.
-•  Parses the data to extract risk indicators (e.g., CVEs, ATT&CK techniques, attack frequencies).
-•  Maps these indicators to NIST 800-53 controls using predefined mappings or control families.
-•  Normalizes and prioritizes controls based on risk scores.
-•  Generates outputs in JSON and HTML formats.
-•  Provides a command-line interface (CLI) to execute the process.
+
+-  Downloads risk indicator datasets from public sources.
+-  Parses the data to extract risk indicators (e.g., CVEs, ATT&CK techniques, attack frequencies).
+-  Maps these indicators to NIST 800-53 controls using predefined mappings or control families.
+-  Normalizes and prioritizes controls based on risk scores.
+-  Generates outputs in JSON and HTML formats.
+-  Provides a command-line interface (CLI) to execute the process.
 
 ## Project Structure
 ```
