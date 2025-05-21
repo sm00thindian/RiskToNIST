@@ -3,6 +3,8 @@
 import os
 import requests
 import zipfile
+import json
+from datetime import datetime, timedelta
 
 def download_file(url, filename):
     """Download a file from a URL and save it to the data directory.
@@ -30,7 +32,7 @@ def extract_zip(zip_path, extract_to, output_filename=None):
 
     Args:
         zip_path (str): Path to the ZIP file.
-        extract_to | extract_to (str): Directory to extract the files to.
+        extract_to (str): Directory to extract the files to.
         output_filename (str, optional): Rename the extracted file to this name.
     """
     try:
@@ -38,7 +40,6 @@ def extract_zip(zip_path, extract_to, output_filename=None):
             zip_ref.extractall(extract_to)
         print(f"Extracted {zip_path} to {extract_to}")
         if output_filename:
-            # Rename the first extracted CSV file (assuming one main file)
             extracted_files = [f for f in os.listdir(extract_to) if f.endswith('.csv') and not f.startswith('__MACOSX')]
             if extracted_files:
                 os.rename(
@@ -52,20 +53,82 @@ def extract_zip(zip_path, extract_to, output_filename=None):
         print(f"Error extracting {zip_path}: {e}")
         raise
 
+def download_nvd_cves(api_key=None):
+    """Download NVD CVE data using the 2.0 API, saving as JSON files.
+
+    Args:
+        api_key (str, optional): NVD API key to increase rate limits.
+    """
+    base_url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+    headers = {"apiKey": api_key} if api_key else {}
+    results_per_page = 2000  # Maximum allowed by NVD API
+    start_date = datetime(2025, 1, 1)
+    end_date = datetime(2025, 5, 21)  # Current date
+    delta = timedelta(days=120)  # Maximum date range per request
+
+    # Initialize JSON files
+    base_filepath = os.path.join("data", "nvdcve-1.1-2025.json")
+    recent_filepath = os.path.join("data", "nvdcve-1.1-recent.json")
+    modified_filepath = os.path.join("data", "nvdcve-1.1-modified.json")
+
+    # Check if files already exist
+    if all(os.path.exists(p) for p in [base_filepath, recent_filepath, modified_filepath]):
+        print("NVD JSON files already exist, skipping download.")
+        return
+
+    # Fetch CVEs in 120-day chunks
+    cve_items = []
+    current_start = start_date
+    while current_start < end_date:
+        current_end = min(current_start + delta, end_date)
+        params = {
+            "lastModStartDate": current_start.strftime("%Y-%m-%dT00:00:00.000"),
+            "lastModEndDate": current_end.strftime("%Y-%m-%dT23:59:59.999"),
+            "resultsPerPage": results_per_page,
+            "startIndex": 0
+        }
+
+        while True:
+            try:
+                response = requests.get(base_url, headers=headers, params=params, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+                cve_items.extend(data.get("vulnerabilities", []))
+                total_results = data.get("totalResults", 0)
+                params["startIndex"] += results_per_page
+                if params["startIndex"] >= total_results:
+                    break
+            except requests.RequestException as e:
+                print(f"Error fetching NVD CVEs: {e}")
+                raise
+
+        current_start = current_end + timedelta(seconds=1)
+
+    # Save as 2025 base file (all CVEs)
+    with open(base_filepath, "w") as f:
+        json.dump({"CVE_Items": cve_items}, f)
+    print(f"Saved {base_filepath}")
+
+    # Save recent and modified files (simplified, as API covers updates)
+    # Recent: CVEs published in the last 8 days
+    recent_date = datetime(2025, 5, 13)  # 8 days before May 21, 2025
+    recent_items = [item for item in cve_items if datetime.strptime(item["cve"]["published"], "%Y-%m-%dT%H:%M:%S.%f") >= recent_date]
+    with open(recent_filepath, "w") as f:
+        json.dump({"CVE_Items": recent_items}, f)
+    print(f"Saved {recent_filepath}")
+
+    # Modified: CVEs modified in the last 8 days
+    modified_items = [item for item in cve_items if datetime.strptime(item["cve"]["lastModified"], "%Y-%m-%dT%H:%M:%S.%f") >= recent_date]
+    with open(modified_filepath, "w") as f:
+        json.dump({"CVE_Items": modified_items}, f)
+    print(f"Saved {modified_filepath}")
+
 def download_datasets():
     """Download all required datasets."""
-    # NVD feeds (ZIP files)
-    nvd_feeds = [
-        ("https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-2025.json.zip", "nvdcve-1.1-2025.json.zip", "nvdcve-1.1-2025.json"),
-        ("https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-recent.json.zip", "nvdcve-1.1-recent.json.zip", "nvdcve-1.1-recent.json"),
-        ("https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-modified.json.zip", "nvdcve-1.1-modified.json.zip", "nvdcve-1.1-modified.json"),
-    ]
-    for url, zip_filename, output_filename in nvd_feeds:
-        zip_path = os.path.join("data", zip_filename)
-        download_file(url, zip_filename)
-        extract_zip(zip_path, "data", output_filename)
-        # Optionally remove the ZIP file
-        # os.remove(zip_path)
+    # Download NVD CVEs via API
+    # Optionally, set NVD_API_KEY environment variable for higher rate limits
+    api_key = os.environ.get("NVD_API_KEY")
+    download_nvd_cves(api_key)
 
     # CISA KEV Catalog (CSV)
     download_file(
@@ -88,10 +151,8 @@ def download_datasets():
         # os.remove(zip_path)
 
     # CIC-IDS2017 (ZIP containing CSVs)
-    # Note: The original URL (https://www.unb.ca/cic/datasets/ids-2017/GeneratedLabelledFlows.zip) returns 404
     # Placeholder URL; replace with the correct URL from https://www.unb.ca/cic/datasets/ids-2017.html
-    # If registration is required, visit the page, complete the form, and obtain the download link
-    cic_url = "http://205.174.165.80/CICDataset/CIC-IDS-2017/Dataset/MachineLearningCSV.zip"  # Outdated, replace with new URL
+    cic_url = "http://205.174.165.80/CICDataset/CIC-IDS-2017/Dataset/MachineLearningCSV.zip"
     cic_zip_filename = "cic_ids2017.zip"
     cic_output_filename = "cic_ids2017.csv"
     zip_path = os.path.join("data", cic_zip_filename)
