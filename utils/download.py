@@ -56,8 +56,10 @@ def extract_zip(zip_path, extract_to, output_filename=None):
 
 def download_nvd_cves():
     """Download NVD CVE data using the 2.0 API, saving as JSON files."""
-    # Use provided API key or environment variable
-    api_key = os.environ.get("NVD_API_KEY", "")
+    # Require NVD_API_KEY environment variable
+    api_key = os.environ.get("NVD_API_KEY")
+    if not api_key:
+        raise ValueError("NVD_API_KEY environment variable is not set. Please set it with your NVD API key.")
     base_url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
     headers = {"apiKey": api_key}
     results_per_page = 2000  # Maximum allowed by NVD API
