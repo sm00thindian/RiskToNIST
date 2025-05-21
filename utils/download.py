@@ -5,6 +5,7 @@ import requests
 import zipfile
 import json
 from datetime import datetime, timedelta
+import time
 
 def download_file(url, filename):
     """Download a file from a URL and save it to the data directory.
@@ -56,13 +57,13 @@ def extract_zip(zip_path, extract_to, output_filename=None):
 def download_nvd_cves():
     """Download NVD CVE data using the 2.0 API, saving as JSON files."""
     # Use provided API key or environment variable
-    api_key = os.environ.get("NVD_API_KEY", "Go-Get-A-Key")
+    api_key = os.environ.get("NVD_API_KEY", "")
     base_url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
     headers = {"apiKey": api_key}
     results_per_page = 2000  # Maximum allowed by NVD API
     start_date = datetime(2025, 1, 1)
-    end_date = datetime(2025, 5, 21)  # Current date
-    delta = timedelta(days=120)  # Maximum date range per request
+    end_date = datetime.now()  # Current date and time
+    delta = timedelta(days=30)  # Smaller chunks to avoid empty responses
 
     # Initialize JSON files
     base_filepath = os.path.join("data", "nvdcve-1.1-2025.json")
@@ -74,14 +75,15 @@ def download_nvd_cves():
         print("NVD JSON files already exist, skipping download.")
         return
 
-    # Fetch CVEs in 120-day chunks
+    # Fetch CVEs in 30-day chunks
     cve_items = []
     current_start = start_date
+    request_count = 0
     while current_start < end_date:
         current_end = min(current_start + delta, end_date)
         params = {
-            "lastModStartDate": current_start.strftime("%Y-%m-%dT00:00:00.000"),
-            "lastModEndDate": current_end.strftime("%Y-%m-%dT23:59:59.999"),
+            "lastModStartDate": current_start.strftime("%Y-%m-%dT%H:%M:%S.000"),
+            "lastModEndDate": current_end.strftime("%Y-%m-%dT%H:%M:%S.999"),
             "resultsPerPage": results_per_page,
             "startIndex": 0
         }
@@ -89,6 +91,10 @@ def download_nvd_cves():
         while True:
             try:
                 response = requests.get(base_url, headers=headers, params=params, timeout=10)
+                request_count += 1
+                if response.status_code == 404:
+                    print(f"No CVEs found for {current_start} to {current_end}, continuing...")
+                    break
                 response.raise_for_status()
                 data = response.json()
                 cve_items.extend(data.get("vulnerabilities", []))
@@ -96,8 +102,11 @@ def download_nvd_cves():
                 params["startIndex"] += results_per_page
                 if params["startIndex"] >= total_results:
                     break
+                # Rate limit: 50 requests per 30 seconds (0.6 seconds per request)
+                if request_count % 5 == 0:
+                    time.sleep(3)  # Sleep after every 5 requests
             except requests.RequestException as e:
-                print(f"Error fetching NVD CVEs: {e}")
+                print(f"Error fetching NVD CVEs for {current_start} to {current_end}: {e}")
                 raise
 
         current_start = current_end + timedelta(seconds=1)
@@ -107,15 +116,13 @@ def download_nvd_cves():
         json.dump({"CVE_Items": cve_items}, f)
     print(f"Saved {base_filepath}")
 
-    # Save recent and modified files (simplified, as API covers updates)
-    # Recent: CVEs published in the last 8 days
-    recent_date = datetime(2025, 5, 13)  # 8 days before May 21, 2025
+    # Save recent and modified files
+    recent_date = end_date - timedelta(days=8)  # Last 8 days
     recent_items = [item for item in cve_items if datetime.strptime(item["cve"]["published"], "%Y-%m-%dT%H:%M:%S.%f") >= recent_date]
     with open(recent_filepath, "w") as f:
         json.dump({"CVE_Items": recent_items}, f)
     print(f"Saved {recent_filepath}")
 
-    # Modified: CVEs modified in the last 8 days
     modified_items = [item for item in cve_items if datetime.strptime(item["cve"]["lastModified"], "%Y-%m-%dT%H:%M:%S.%f") >= recent_date]
     with open(modified_filepath, "w") as f:
         json.dump({"CVE_Items": modified_items}, f)
