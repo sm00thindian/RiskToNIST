@@ -162,14 +162,3 @@ def download_datasets():
         except requests.RequestException as e:
             print(f"Failed to download MITRE ATT&CK: {e}")
             print("Continuing without MITRE ATT&CK dataset...")
-
-    # Stratosphere IPS (CSV, assuming CTU-13 summary)
-    try:
-        download_file(
-            "https://mcfp.felk.cvut.cz/publicDatasets/CTU-13-Dataset/CTU-13-Dataset.csv",
-            "stratosphere.csv"
-        )
-    except requests.RequestException as e:
-        print(f"Failed to download Stratosphere IPS: {e}")
-        print("Please verify the URL: https://mcfp.felk.cvut.cz/publicDatasets/CTU-13-Dataset/CTU-13-Dataset.csv")
-        print("Continuing without Stratosphere IPS dataset...")
