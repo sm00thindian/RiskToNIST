@@ -29,27 +29,34 @@ def download_file(url, filename):
         print(f"{filename} already exists, skipping download.")
 
 def extract_zip(zip_path, extract_to, output_filename=None):
-    """Extract a ZIP file to the specified directory, optionally renaming the output.
+    """Extract a ZIP file to the specified directory, optionally renaming a specific CSV.
 
     Args:
         zip_path (str): Path to the ZIP file.
         extract_to (str): Directory to extract the files to.
-        output_filename (str, optional): Rename the extracted file to this name.
+        output_filename (str, optional): Rename the selected CSV to this name.
     """
     try:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(extract_to)
         print(f"Extracted {zip_path} to {extract_to}")
         if output_filename:
-            extracted_files = [f for f in os.listdir(extract_to) if f.endswith('.csv') and not f.startswith('__MACOSX')]
+            # Look for a specific CSV (e.g., Wednesday for CIC-IDS2017 attacks)
+            extracted_files = [f for f in os.listdir(extract_to) if f.endswith('.csv') and 'Wednesday-WorkingHours' in f and not f.startswith('__MACOSX')]
             if extracted_files:
+                selected_csv = extracted_files[0]  # Use Wednesday's CSV for attacks
                 os.rename(
-                    os.path.join(extract_to, extracted_files[0]),
+                    os.path.join(extract_to, selected_csv),
                     os.path.join(extract_to, output_filename)
                 )
-                print(f"Renamed extracted file to {output_filename}")
+                print(f"Renamed {selected_csv} to {output_filename}")
+                # Clean up other extracted CSVs to save space
+                for f in os.listdir(extract_to):
+                    if f.endswith('.csv') and f != output_filename and not f.startswith('__MACOSX'):
+                        os.remove(os.path.join(extract_to, f))
+                        print(f"Removed extra CSV: {f}")
             else:
-                print(f"Warning: No CSV files found in {zip_path}")
+                print(f"Warning: No suitable CSV files found in {zip_path}")
     except zipfile.BadZipFile as e:
         print(f"Error extracting {zip_path}: {e}")
         raise
@@ -136,10 +143,14 @@ def download_datasets():
     download_nvd_cves()
 
     # CISA KEV Catalog (CSV)
-    download_file(
-        "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv",
-        "kev.csv"
-    )
+    try:
+        download_file(
+            "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv",
+            "kev.csv"
+        )
+    except requests.RequestException as e:
+        print(f"Failed to download CISA KEV: {e}")
+        print("Continuing without CISA KEV dataset...")
 
     # MITRE ATT&CK (JSON, potentially ZIP)
     attack_url = "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json"
@@ -151,13 +162,16 @@ def download_datasets():
         attack_zip_url = "https://attack.mitre.org/docs/ATTACK_Domain_v15.0_JSON.zip"
         attack_zip_filename = "attack.zip"
         zip_path = os.path.join("data", attack_zip_filename)
-        download_file(attack_zip_url, attack_zip_filename)
-        extract_zip(zip_path, "data", attack_filename)
-        # os.remove(zip_path)
+        try:
+            download_file(attack_zip_url, attack_zip_filename)
+            extract_zip(zip_path, "data", attack_filename)
+            # os.remove(zip_path)
+        except requests.RequestException as e:
+            print(f"Failed to download MITRE ATT&CK: {e}")
+            print("Continuing without MITRE ATT&CK dataset...")
 
     # CIC-IDS2017 (ZIP containing CSVs)
-    # Placeholder URL; replace with the correct URL from https://www.unb.ca/cic/datasets/ids-2017.html
-    cic_url = "http://205.174.165.80/CICDataset/CIC-IDS-2017/Dataset/MachineLearningCSV.zip"
+    cic_url = "http://cicresearch.ca/CICDataset/CIC-IDS-2017/Dataset/CIC-IDS-2017/CSVs/MachineLearningCSV.zip"
     cic_zip_filename = "cic_ids2017.zip"
     cic_output_filename = "cic_ids2017.csv"
     zip_path = os.path.join("data", cic_zip_filename)
@@ -167,12 +181,21 @@ def download_datasets():
         # os.remove(zip_path)
     except requests.RequestException as e:
         print(f"Failed to download CIC-IDS2017: {e}")
-        print("Please visit https://www.unb.ca/cic/datasets/ids-2017.html to obtain the correct URL or register for access.")
-        print("Update the 'cic_url' variable in download.py with the new URL and re-run.")
-        raise
+        print("Please verify the URL: http://cicresearch.ca/CICDataset/CIC-IDS-2017/Dataset/CIC-IDS-2017/CSVs/MachineLearningCSV.zip")
+        print("Steps:")
+        print("1. Visit https://www.unb.ca/cic/datasets/ids-2017.html to check for a new download link or registration form.")
+        print("2. Email a.habibi.l@unb.ca or cic@unb.ca to request access, citing your project.")
+        print("3. Manually download 'MachineLearningCSV.zip' and place it in data/cic_ids2017.zip.")
+        print("Continuing without CIC-IDS2017 dataset...")
+        # Continue without raising an error
 
     # Stratosphere IPS (CSV, assuming CTU-13 summary)
-    download_file(
-        "https://mcfp.felk.cvut.cz/publicDatasets/CTU-13-Dataset/CTU-13-Dataset.csv",
-        "stratosphere.csv"
-    )
+    try:
+        download_file(
+            "https://mcfp.felk.cvut.cz/publicDatasets/CTU-13-Dataset/CTU-13-Dataset.csv",
+            "stratosphere.csv"
+        )
+    except requests.RequestException as e:
+        print(f"Failed to download Stratosphere IPS: {e}")
+        print("Please verify the URL: https://mcfp.felk.cvut.cz/publicDatasets/CTU-13-Dataset/CTU-13-Dataset.csv")
+        print("Continuing without Stratosphere IPS dataset...")
