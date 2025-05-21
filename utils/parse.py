@@ -71,8 +71,15 @@ def parse_kev():
     if not os.path.exists(csv_path):
         print(f"Warning: {csv_path} not found, skipping KEV parsing.")
         return []
-    df = pd.read_csv(csv_path)
-    return [{"cve": cve, "score": 10.0} for cve in df["cveID"]]  # Assume max score for exploited vulns
+    try:
+        df = pd.read_csv(csv_path)
+        if "cveID" not in df.columns:
+            print(f"Warning: 'cveID' column not found in {csv_path}, skipping KEV parsing.")
+            return []
+        return [{"cve": cve, "score": 10.0} for cve in df["cveID"]]  # Assume max score for exploited vulns
+    except pd.errors.EmptyDataError:
+        print(f"Warning: {csv_path} is empty or invalid, skipping KEV parsing.")
+        return []
 
 def parse_attack():
     """Parse MITRE ATT&CK JSON to extract techniques.
@@ -84,31 +91,13 @@ def parse_attack():
     if not os.path.exists(json_path):
         print(f"Warning: {json_path} not found, skipping ATT&CK parsing.")
         return []
-    with open(json_path, "r") as f:
-        data = json.load(f)
-    return [{"technique": obj["external_references"][0]["external_id"], "score": 5.0}  # Placeholder score
-            for obj in data["objects"] if obj["type"] == "attack-pattern"]
-
-def parse_cic():
-    """Parse CIC-IDS2017 CSV to extract attack frequencies.
-
-    Returns:
-        list: List of dicts with attack labels and their frequencies.
-    """
-    csv_path = os.path.join("data", "cic_ids2017.csv")
-    if not os.path.exists(csv_path):
-        print(f"Warning: {csv_path} not found, skipping CIC-IDS2017 parsing.")
-        return []
-    
     try:
-        df = pd.read_csv(csv_path)
-        if " Label" not in df.columns:
-            print(f"Warning: ' Label' column not found in {csv_path}, skipping CIC-IDS2017 parsing.")
-            return []
-        attacks = df[" Label"].value_counts().to_dict()
-        return [{"attack": label, "score": freq / 1000} for label, freq in attacks.items() if label != "BENIGN"]
-    except pd.errors.EmptyDataError:
-        print(f"Warning: {csv_path} is empty or invalid, skipping CIC-IDS2017 parsing.")
+        with open(json_path, "r") as f:
+            data = json.load(f)
+        return [{"technique": obj["external_references"][0]["external_id"], "score": 5.0}  # Placeholder score
+                for obj in data["objects"] if obj["type"] == "attack-pattern"]
+    except json.JSONDecodeError:
+        print(f"Warning: {json_path} is invalid JSON, skipping ATT&CK parsing.")
         return []
 
 def parse_stratosphere():
@@ -141,6 +130,5 @@ def parse_all_datasets():
         "nvd": parse_nvd(),
         "kev": parse_kev(),
         "attack": parse_attack(),
-        "cic": parse_cic(),
         "stratosphere": parse_stratosphere()
     }
