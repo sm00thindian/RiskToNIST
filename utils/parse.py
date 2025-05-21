@@ -67,7 +67,11 @@ def parse_kev():
     Returns:
         list: List of dicts with CVE IDs and scores.
     """
-    df = pd.read_csv("data/kev.csv")
+    csv_path = os.path.join("data", "kev.csv")
+    if not os.path.exists(csv_path):
+        print(f"Warning: {csv_path} not found, skipping KEV parsing.")
+        return []
+    df = pd.read_csv(csv_path)
     return [{"cve": cve, "score": 10.0} for cve in df["cveID"]]  # Assume max score for exploited vulns
 
 def parse_attack():
@@ -76,7 +80,11 @@ def parse_attack():
     Returns:
         list: List of dicts with technique IDs and scores.
     """
-    with open("data/attack.json", "r") as f:
+    json_path = os.path.join("data", "attack.json")
+    if not os.path.exists(json_path):
+        print(f"Warning: {json_path} not found, skipping ATT&CK parsing.")
+        return []
+    with open(json_path, "r") as f:
         data = json.load(f)
     return [{"technique": obj["external_references"][0]["external_id"], "score": 5.0}  # Placeholder score
             for obj in data["objects"] if obj["type"] == "attack-pattern"]
@@ -89,16 +97,19 @@ def parse_cic():
     """
     csv_path = os.path.join("data", "cic_ids2017.csv")
     if not os.path.exists(csv_path):
-        extracted_csvs = [f for f in os.listdir("data") if f.endswith('.csv') and 'WorkingHours' in f]
-        if extracted_csvs:
-            csv_path = os.path.join("data", extracted_csvs[0])
-            print(f"Using {csv_path} for CIC-IDS2017 parsing")
-        else:
-            raise FileNotFoundError("No CIC-IDS2017 CSV files found in data/ directory")
+        print(f"Warning: {csv_path} not found, skipping CIC-IDS2017 parsing.")
+        return []
     
-    df = pd.read_csv(csv_path)
-    attacks = df[" Label"].value_counts().to_dict()
-    return [{"attack": label, "score": freq / 1000} for label, freq in attacks.items() if label != "BENIGN"]
+    try:
+        df = pd.read_csv(csv_path)
+        if " Label" not in df.columns:
+            print(f"Warning: ' Label' column not found in {csv_path}, skipping CIC-IDS2017 parsing.")
+            return []
+        attacks = df[" Label"].value_counts().to_dict()
+        return [{"attack": label, "score": freq / 1000} for label, freq in attacks.items() if label != "BENIGN"]
+    except pd.errors.EmptyDataError:
+        print(f"Warning: {csv_path} is empty or invalid, skipping CIC-IDS2017 parsing.")
+        return []
 
 def parse_stratosphere():
     """Parse Stratosphere IPS summary CSV to extract risk indicators.
@@ -106,8 +117,19 @@ def parse_stratosphere():
     Returns:
         list: List of dicts with attack labels and scores.
     """
-    df = pd.read_csv("data/stratosphere.csv")
-    return [{"attack": row["label"], "score": 5.0} for _, row in df.iterrows() if row["label"] != "normal"]
+    csv_path = os.path.join("data", "stratosphere.csv")
+    if not os.path.exists(csv_path):
+        print(f"Warning: {csv_path} not found, skipping Stratosphere IPS parsing.")
+        return []
+    try:
+        df = pd.read_csv(csv_path)
+        if "label" not in df.columns:
+            print(f"Warning: 'label' column not found in {csv_path}, skipping Stratosphere IPS parsing.")
+            return []
+        return [{"attack": row["label"], "score": 5.0} for _, row in df.iterrows() if row["label"] != "normal"]
+    except pd.errors.EmptyDataError:
+        print(f"Warning: {csv_path} is empty or invalid, skipping Stratosphere IPS parsing.")
+        return []
 
 def parse_all_datasets():
     """Parse all datasets and return combined risk indicators.
