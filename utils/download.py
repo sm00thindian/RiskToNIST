@@ -53,14 +53,12 @@ def extract_zip(zip_path, extract_to, output_filename=None):
         print(f"Error extracting {zip_path}: {e}")
         raise
 
-def download_nvd_cves(api_key=None):
-    """Download NVD CVE data using the 2.0 API, saving as JSON files.
-
-    Args:
-        api_key (str, optional): NVD API key to increase rate limits.
-    """
+def download_nvd_cves():
+    """Download NVD CVE data using the 2.0 API, saving as JSON files."""
+    # Use provided API key or environment variable
+    api_key = os.environ.get("NVD_API_KEY", "Go-Get-A-Key")
     base_url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-    headers = {"apiKey": api_key} if api_key else {}
+    headers = {"apiKey": api_key}
     results_per_page = 2000  # Maximum allowed by NVD API
     start_date = datetime(2025, 1, 1)
     end_date = datetime(2025, 5, 21)  # Current date
@@ -126,9 +124,7 @@ def download_nvd_cves(api_key=None):
 def download_datasets():
     """Download all required datasets."""
     # Download NVD CVEs via API
-    # Optionally, set NVD_API_KEY environment variable for higher rate limits
-    api_key = os.environ.get("NVD_API_KEY")
-    download_nvd_cves(api_key)
+    download_nvd_cves()
 
     # CISA KEV Catalog (CSV)
     download_file(
