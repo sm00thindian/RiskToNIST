@@ -100,26 +100,6 @@ def parse_attack():
         print(f"Warning: {json_path} is invalid JSON, skipping ATT&CK parsing.")
         return []
 
-def parse_stratosphere():
-    """Parse Stratosphere IPS summary CSV to extract risk indicators.
-
-    Returns:
-        list: List of dicts with attack labels and scores.
-    """
-    csv_path = os.path.join("data", "stratosphere.csv")
-    if not os.path.exists(csv_path):
-        print(f"Warning: {csv_path} not found, skipping Stratosphere IPS parsing.")
-        return []
-    try:
-        df = pd.read_csv(csv_path)
-        if "label" not in df.columns:
-            print(f"Warning: 'label' column not found in {csv_path}, skipping Stratosphere IPS parsing.")
-            return []
-        return [{"attack": row["label"], "score": 5.0} for _, row in df.iterrows() if row["label"] != "normal"]
-    except pd.errors.EmptyDataError:
-        print(f"Warning: {csv_path} is empty or invalid, skipping Stratosphere IPS parsing.")
-        return []
-
 def parse_all_datasets():
     """Parse all datasets and return combined risk indicators.
 
@@ -129,6 +109,5 @@ def parse_all_datasets():
     return {
         "nvd": parse_nvd(),
         "kev": parse_kev(),
-        "attack": parse_attack(),
-        "stratosphere": parse_stratosphere()
+        "attack": parse_attack()
     }
