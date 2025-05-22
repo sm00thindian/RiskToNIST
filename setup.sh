@@ -32,9 +32,9 @@ source venv/bin/activate
 
 # Upgrade pip and install dependencies
 echo "Installing Python dependencies..."
-pip install --upgrade pip --quiet
+pip install --upgrade pip --quiet --trusted-host pypi.org --trusted-host files.pythonhosted.org
 if [ -f "requirements.txt" ]; then
-    pip install -r requirements.txt --quiet
+    pip install -r requirements.txt --quiet --trusted-host pypi.org --trusted-host files.pythonhosted.org
 else
     echo "Error: requirements.txt not found."
     exit 1
