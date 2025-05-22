@@ -15,8 +15,8 @@ def load_nist_controls():
         dict: Dictionary of control IDs to descriptions.
     """
     filepath = "mappings/nist_controls.json"
-    primary_url = "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json"
-    fallback_url = "https://csrc.nist.gov/files/pubs/sp/800/53/r5/upd1/final/oscal/json/NIST_SP-800-53_rev5_catalog.json"
+    primary_url = "https://github.com/usnistgov/oscal-content/raw/refs/heads/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json"
+    fallback_url = "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-16.1/nist_800_53-rev5/enterprise/nist_800_53-rev5_attack-16.1-enterprise_json.json"
 
     # Download if file doesn't exist or is empty
     if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
@@ -72,7 +72,7 @@ def load_nist_controls():
         logging.info(f"Loaded {len(controls)} NIST controls from {filepath}")
         return controls
     except json.JSONDecodeError as e:
-        logging.error(f"Failed to parse {filepath}: {e}, using default controls")
+        logging.error(f"Failed to parse {filepath): {e}, using default controls")
         default_controls = {
             "RA-5": "Vulnerability Scanning",
             "SI-2": "Flaw Remediation",
@@ -88,7 +88,7 @@ def load_attack_mappings():
     """
     filepath = "mappings/attack_to_nist.json"
     if not os.path.exists(filepath):
-        url = "https://ctid.mitre.org/projects/nist-800-53-control-mappings/attack_to_nist.json"
+        url = "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-16.1/nist_800_53-rev5/enterprise/nist_800_53-rev5_attack-16.1-enterprise_json.json"
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
