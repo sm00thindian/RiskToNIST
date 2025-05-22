@@ -2,24 +2,74 @@
 
 import json
 import os
+import requests
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_nist_controls():
-    """Load NIST 800-53 controls from JSON file.
+    """Load NIST 800-53 controls from JSON file, downloading if not present.
 
     Returns:
         dict: Dictionary of control IDs to descriptions.
     """
-    if not os.path.exists("mappings/nist_controls.json"):
-        # Download NIST 800-53 OSCAL JSON (placeholder URL)
-        import requests
-        url = "https://csrc.nist.gov/files/pubs/sp/800/53/r5/upd1/final/oscal/json/NIST_SP-800-53_rev5_catalog.json"
-        with open("mappings/nist_controls.json", "wb") as f:
-            f.write(requests.get(url, timeout=10).content)
-    
-    with open("mappings/nist_controls.json", "r") as f:
-        data = json.load(f)
-    controls = {control["id"]: control["title"] for control in data["catalog"]["controls"]}
-    return controls
+    filepath = "mappings/nist_controls.json"
+    primary_url = "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json"
+    fallback_url = "https://csrc.nist.gov/files/pubs/sp/800/53/r5/upd1/final/oscal/json/NIST_SP-800-53_rev5_catalog.json"
+
+    # Download if file doesn't exist or is empty
+    if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
+        for url in [primary_url, fallback_url]:
+            try:
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                content = response.content
+                # Verify content is valid JSON
+                json.loads(content)
+                with open(filepath, "wb") as f:
+                    f.write(content)
+                logging.info(f"Downloaded NIST controls to {filepath} from {url}")
+                break
+            except (requests.RequestException, json.JSONDecodeError) as e:
+                logging.warning(f"Failed to download NIST controls from {url}: {e}")
+                continue
+        else:
+            logging.error("All download attempts failed, creating default controls")
+            # Fallback default controls (minimal set for testing)
+            default_controls = {
+                "RA-5": "Vulnerability Scanning",
+                "SI-2": "Flaw Remediation",
+                "SI-4": "System Monitoring"
+            }
+            with open(filepath, "w") as f:
+                json.dump({"catalog": {"controls": [{"id": k, "title": v} for k, v in default_controls.items()]}}, f)
+            logging.info(f"Created default controls in {filepath}")
+
+    # Load controls
+    try:
+        with open(filepath, "r") as f:
+            content = f.read()
+        if not content.strip():
+            logging.error(f"{filepath} is empty, using default controls")
+            default_controls = {
+                "RA-5": "Vulnerability Scanning",
+                "SI-2": "Flaw Remediation",
+                "SI-4": "System Monitoring"
+            }
+            return default_controls
+        data = json.loads(content)
+        controls = {control["id"]: control["title"] for control in data["catalog"]["controls"]}
+        logging.info(f"Loaded {len(controls)} NIST controls from {filepath}")
+        return controls
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to parse {filepath}: {e}, using default controls")
+        default_controls = {
+            "RA-5": "Vulnerability Scanning",
+            "SI-2": "Flaw Remediation",
+            "SI-4": "System Monitoring"
+        }
+        return default_controls
 
 def load_attack_mappings():
     """Load MITRE ATT&CK to NIST 800-53 mappings.
@@ -27,15 +77,24 @@ def load_attack_mappings():
     Returns:
         dict: Dictionary mapping ATT&CK techniques to NIST controls.
     """
-    if not os.path.exists("mappings/attack_to_nist.json"):
-        # Placeholder: Download from CTID or use a predefined mapping
+    filepath = "mappings/attack_to_nist.json"
+    if not os.path.exists(filepath):
         url = "https://ctid.mitre.org/projects/nist-800-53-control-mappings/attack_to_nist.json"
-        import requests
-        with open("mappings/attack_to_nist.json", "wb") as f:
-            f.write(requests.get(url, timeout=10).content)
-    
-    with open("mappings/attack_to_nist.json", "r") as f:
-        return json.load(f)
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            with open(filepath, "wb") as f:
+                f.write(response.content)
+            logging.info(f"Downloaded ATT&CK mappings to {filepath}")
+        except requests.RequestException as e:
+            logging.warning(f"Failed to download ATT&CK mappings: {e}, using default mappings")
+            return {}  # Empty mappings as fallback
+    try:
+        with open(filepath, "r") as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        logging.warning(f"Failed to parse {filepath}: {e}, using default mappings")
+        return {}
 
 def map_risks_to_controls(risks):
     """Map risk indicators to NIST 800-53 controls.
@@ -69,11 +128,6 @@ def map_risks_to_controls(risks):
             for control_id in attack_mappings[technique]:
                 control_risks[control_id]["risks"].append(technique)
                 control_risks[control_id]["score"] += risk["score"]
-
-    # Map CIC and Stratosphere network risks
-    for risk in risks["cic"] + risks["stratosphere"]:
-        control_risks["SI-4"]["risks"].append(risk["attack"])
-        control_risks["SI-4"]["score"] += risk["score"]
 
     return control_risks
 
