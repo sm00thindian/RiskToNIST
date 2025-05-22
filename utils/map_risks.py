@@ -72,7 +72,7 @@ def load_nist_controls():
         logging.info(f"Loaded {len(controls)} NIST controls from {filepath}")
         return controls
     except json.JSONDecodeError as e:
-        logging.error(f"Failed to parse {filepath): {e}, using default controls")
+        logging.error(f"Failed to parse {filepath}: {e}, using default controls")
         default_controls = {
             "RA-5": "Vulnerability Scanning",
             "SI-2": "Flaw Remediation",
