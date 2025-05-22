@@ -36,7 +36,6 @@ def load_nist_controls():
                 continue
         else:
             logging.error("All download attempts failed, creating default controls")
-            # Fallback default controls (minimal set for testing)
             default_controls = {
                 "RA-5": "Vulnerability Scanning",
                 "SI-2": "Flaw Remediation",
@@ -59,7 +58,17 @@ def load_nist_controls():
             }
             return default_controls
         data = json.loads(content)
-        controls = {control["id"]: control["title"] for control in data["catalog"]["controls"]}
+        # Handle different possible keys for controls
+        controls_list = data["catalog"].get("controls", data["catalog"].get("control", []))
+        if not controls_list:
+            logging.error("No controls found in catalog, using default controls")
+            default_controls = {
+                "RA-5": "Vulnerability Scanning",
+                "SI-2": "Flaw Remediation",
+                "SI-4": "System Monitoring"
+            }
+            return default_controls
+        controls = {control["id"]: control["title"] for control in controls_list}
         logging.info(f"Loaded {len(controls)} NIST controls from {filepath}")
         return controls
     except json.JSONDecodeError as e:
