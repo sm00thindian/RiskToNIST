@@ -3,27 +3,44 @@
     {
       "name": "CISA KEV",
       "url": "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv",
+      "type": "csv",
       "enabled": true
     },
     {
       "name": "Verizon DBIR",
       "url": "https://example.com/verizon_dbir.csv",
+      "type": "csv",
       "enabled": false
     },
     {
       "name": "IBM Breach",
       "url": "https://example.com/ibm_breach.csv",
-      "enabled": false
+      "type": "csv",
+      "enabled": true
     },
     {
       "name": "CrowdStrike",
       "url": "https://example.com/crowdstrike.csv",
-      "enabled": false
+      "type": "csv",
+      "enabled": true
     },
     {
       "name": "Tenable",
       "url": "https://example.com/tenable.csv",
-      "enabled": false
+      "type": "csv",
+      "enabled": true
+    },
+    {
+      "name": "NVD CVE",
+      "url": "https://services.nvd.nist.gov/rest/json/cves/2.0",
+      "type": "api",
+      "enabled": true
+    },
+    {
+      "name": "ATTACK Mapping",
+      "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-14.1/nist_800_53-rev5/enterprise/nist_800_53-rev5_attack-14.1-enterprise_json.json",
+      "type": "json",
+      "enabled": true
     }
   ]
 }
