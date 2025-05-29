@@ -11,6 +11,11 @@ import time
 import threading
 import argparse
 import json
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 from utils.download import download_datasets
 from utils.parse import parse_all_datasets
 from utils.map_risks import map_risks_to_controls, normalize_and_prioritize, load_attack_mappings
@@ -51,14 +56,21 @@ def main():
         with open(args.config, "r") as f:
             config = json.load(f)
     except Exception as e:
-        print(f"Error: Failed to read {args.config}: {e}")
+        logging.error(f"Failed to read {args.config}: {e}")
         sys.exit(1)
 
     # Extract weights
     weights = config.get("weights", {})
     if not weights or not all(key in weights for key in ["exploitation", "severity", "applicability"]):
-        print("Error: Config file missing valid weights section")
+        logging.error("Config file missing valid weights section")
         sys.exit(1)
+
+    # Validate active sources
+    active_sources = [s["name"] for s in config.get("sources", []) if s.get("enabled", False) and s.get("type") in ["csv", "api"]]
+    if not active_sources:
+        logging.error("No scoring sources (CSV or API) enabled in config")
+        sys.exit(1)
+    logging.info(f"Active scoring sources: {active_sources}")
 
     # Download datasets with progress wheel
     print("Starting dataset download...")
@@ -68,7 +80,7 @@ def main():
     try:
         download_datasets(config_path=args.config, data_dir=args.data_dir)
     except Exception as e:
-        print(f"Error during download: {e}")
+        logging.error(f"Error during download: {e}")
         stop_event.set()
         wheel_thread.join()
         sys.exit(1)
@@ -81,10 +93,11 @@ def main():
     try:
         all_risks = parse_all_datasets(data_dir=args.data_dir)
         if not any(all_risks.values()):
-            print("Error: No valid risk data parsed from CSVs or NVD.")
+            logging.error("No valid risk data parsed from CSVs or NVD")
             sys.exit(1)
+        logging.info(f"Parsed risks from sources: {list(all_risks.keys())}")
     except Exception as e:
-        print(f"Error during parsing: {e}")
+        logging.error(f"Error during parsing: {e}")
         sys.exit(1)
 
     # Map risks to NIST 800-53 controls and prioritize
@@ -93,7 +106,7 @@ def main():
         controls, attack_mappings = map_risks_to_controls(all_risks, data_dir=args.data_dir)
         prioritized_controls = normalize_and_prioritize(controls, weights)
     except Exception as e:
-        print(f"Error during mapping or prioritization: {e}")
+        logging.error(f"Error during mapping or prioritization: {e}")
         sys.exit(1)
 
     # Generate outputs
@@ -101,7 +114,7 @@ def main():
     try:
         generate_outputs(prioritized_controls, attack_mappings=attack_mappings)
     except Exception as e:
-        print(f"Error during output generation: {e}")
+        logging.error(f"Error during output generation: {e}")
         sys.exit(1)
 
     print("Process complete. Outputs are in the 'outputs/' directory:")
