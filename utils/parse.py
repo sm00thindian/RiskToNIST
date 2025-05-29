@@ -26,8 +26,8 @@ def parse_csv(csv_path):
                 if not cve_id:
                     logging.warning(f"Skipping row in {csv_path} with missing cveID")
                     continue
-                controls = ["SI-2"]  # Default for exploited CVEs
-                if isinstance(cwe, str):  # Handle non-NaN strings
+                controls = ["SI-2"]  # Flaw Remediation
+                if isinstance(cwe, str):
                     if "CWE-22" in cwe:
                         controls.extend(["SC-7"])  # Path Traversal
                     elif "CWE-79" in cwe:
@@ -36,6 +36,8 @@ def parse_csv(csv_path):
                         controls.extend(["AC-2"])  # Code Injection, Auth Bypass
                     elif "CWE-502" in cwe or "CWE-78" in cwe:
                         controls.extend(["SI-10"])  # Deserialization, Command Injection
+                    elif "CWE-416" in cwe:
+                        controls.extend(["SI-16"])  # Use-After-Free
                 risks.append({
                     "mitigating_controls": controls,
                     "exploitation_score": 10.0,
@@ -108,7 +110,7 @@ def parse_nvd(data_dir):
         weaknesses = cve.get("weaknesses", [{}])[0].get("description", [{}])
         cwe = weaknesses[0].get("value", "") if weaknesses else ""
         if cwe == "CWE-416":
-            controls.extend(["SI-2"])  # Use-After-Free
+            controls.extend(["SI-2", "SI-16"])  # Use-After-Free
         elif cwe == "CWE-22":
             controls.extend(["SC-7"])  # Path Traversal
         elif cwe == "CWE-79":
@@ -158,15 +160,17 @@ def parse_all_datasets(data_dir="data"):
         if nvd_risks:
             all_risks["nvd_cve"] = nvd_risks
     
-    # Fallback data if no risks parsed
-    if not all_risks:
-        logging.warning("No valid risk data parsed, using fallback data")
+    # Fallback data to ensure additional controls
+    if not all_risks or sum(len(risks) for risks in all_risks.values()) < 10:
+        logging.warning("Limited or no valid risk data parsed, adding fallback data")
         all_risks["fallback"] = [
             {"mitigating_controls": ["SI-2"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": ""},  # Vulnerability remediation
             {"mitigating_controls": ["IA-5"], "exploitation_score": 7.0, "impact_score": 7.0, "cwe": ""},  # Credential abuse
-            {"mitigating_controls": ["AT-2"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""}   # Phishing training
+            {"mitigating_controls": ["AT-2"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Phishing training
+            {"mitigating_controls": ["SC-8"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Secure communications
+            {"mitigating_controls": ["CM-6"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""}   # Configuration settings
         ]
-        logging.info("Added fallback risks for SI-2, IA-5, AT-2")
+        logging.info("Added fallback risks for SI-2, IA-5, AT-2, SC-8, CM-6")
     
     logging.info(f"Parsed risks from {csv_count} CSVs and NVD data: {sum(len(risks) for risks in all_risks.values())} total risks")
     return all_risks
