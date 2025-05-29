@@ -1,127 +1,92 @@
-#!/usr/bin/env python3
-"""Main script to run the RiskToNIST project for NIST 800-53 control prioritization.
-
-This script orchestrates the download, parsing, mapping, prioritization, and output generation
-of risk data to prioritize the top 50 NIST 800-53 controls based on a scoring rubric.
-"""
-
-import os
-import sys
-import time
-import threading
 import argparse
 import json
 import logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
+import os
 from utils.download import download_datasets
 from utils.parse import parse_all_datasets
-from utils.map_risks import map_risks_to_controls, normalize_and_prioritize, load_attack_mappings
-from utils.output import generate_outputs
+from utils.map_risks import map_risks_to_controls, normalize_and_prioritize
+from utils.output import write_outputs
 
-def progress_wheel(stop_event):
-    """Display a rotating progress wheel until stop_event is set.
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def load_config(config_path):
+    """Load configuration from a JSON file.
 
     Args:
-        stop_event (threading.Event): Event to signal when to stop the wheel.
+        config_path (str): Path to the configuration file.
+
+    Returns:
+        dict: Configuration dictionary.
     """
-    chars = ['|', '/', '-', '\\']
-    i = 0
-    while not stop_event.is_set():
-        sys.stdout.write(f'\rDownloading datasets... {chars[i % 4]}')
-        sys.stdout.flush()
-        i += 1
-        time.sleep(0.2)
-    sys.stdout.write('\rDownloading datasets... Done\n')
-    sys.stdout.flush()
-
-def main():
-    """Execute the RiskToNIST workflow with configurable input directory."""
-    # Parse command-line arguments
-    parser = argparse.ArgumentParser(description="Prioritize NIST 800-53 controls based on risk data.")
-    parser.add_argument("--config", default="config.json", help="Path to the configuration file")
-    parser.add_argument("--data_dir", default="data", help="Directory for downloaded and parsed data")
-    args = parser.parse_args()
-
-    # Ensure directories exist
-    os.makedirs(args.data_dir, exist_ok=True)
-    os.makedirs("mappings", exist_ok=True)
-    os.makedirs("outputs", exist_ok=True)
-    os.makedirs("templates", exist_ok=True)
-
-    # Load config file
     try:
-        with open(args.config, "r") as f:
+        with open(config_path, 'r') as f:
             config = json.load(f)
+        logging.info(f"Loaded configuration from {config_path}")
+        return config
     except Exception as e:
-        logging.error(f"Failed to read {args.config}: {e}")
-        sys.exit(1)
+        logging.error(f"Failed to load config {config_path}: {e}")
+        raise
 
-    # Extract weights
-    weights = config.get("weights", {})
-    if not weights or not all(key in weights for key in ["exploitation", "severity", "applicability"]):
-        logging.error("Config file missing valid weights section")
-        sys.exit(1)
+def load_attack_mappings(data_dir):
+    """Load ATT&CK mappings from utils.map_risks to pass to parsing.
 
-    # Validate active sources
-    active_sources = [s["name"] for s in config.get("sources", []) if s.get("enabled", False) and s.get("type") in ["csv", "api"]]
-    if not active_sources:
-        logging.error("No scoring sources (CSV or API) enabled in config")
-        sys.exit(1)
-    logging.info(f"Active scoring sources: {active_sources}")
+    Args:
+        data_dir (str): Directory containing attack_mapping.json.
 
-    # Download datasets with progress wheel
-    print("Starting dataset download...")
-    stop_event = threading.Event()
-    wheel_thread = threading.Thread(target=progress_wheel, args=(stop_event,))
-    wheel_thread.start()
-    try:
-        download_datasets(config_path=args.config, data_dir=args.data_dir)
-    except Exception as e:
-        logging.error(f"Error during download: {e}")
-        stop_event.set()
-        wheel_thread.join()
-        sys.exit(1)
-    finally:
-        stop_event.set()
-        wheel_thread.join()
+    Returns:
+        dict: ATT&CK technique to NIST control mappings.
+    """
+    from utils.map_risks import load_attack_mappings
+    mappings = load_attack_mappings(data_dir)
+    return mappings
 
-    # Parse datasets to extract risk indicators
-    print("Parsing datasets...")
-    try:
-        all_risks = parse_all_datasets(data_dir=args.data_dir)
-        if not any(all_risks.values()):
-            logging.error("No valid risk data parsed from CSVs or NVD")
-            sys.exit(1)
-        logging.info(f"Parsed risks from sources: {list(all_risks.keys())}")
-    except Exception as e:
-        logging.error(f"Error during parsing: {e}")
-        sys.exit(1)
+def main(config_path, data_dir):
+    """Main function to process risk data and generate prioritized controls.
 
-    # Map risks to NIST 800-53 controls and prioritize
-    print("Mapping risks to controls and prioritizing...")
-    try:
-        controls, attack_mappings = map_risks_to_controls(all_risks, data_dir=args.data_dir)
-        prioritized_controls = normalize_and_prioritize(controls, weights)
-    except Exception as e:
-        logging.error(f"Error during mapping or prioritization: {e}")
-        sys.exit(1)
-
-    # Generate outputs
-    print("Generating outputs...")
-    try:
-        generate_outputs(prioritized_controls, attack_mappings=attack_mappings)
-    except Exception as e:
-        logging.error(f"Error during output generation: {e}")
-        sys.exit(1)
-
-    print("Process complete. Outputs are in the 'outputs/' directory:")
-    print("- JSON: outputs/controls.json")
-    print("- CSV: outputs/top_50_controls.csv")
-    print("- HTML: outputs/controls.html (open in a browser)")
-    print("- ATT&CK Mappings: outputs/attack_mappings.json")
+    Args:
+        config_path (str): Path to the configuration file.
+        data_dir (str): Directory for data files.
+    """
+    # Load configuration
+    config = load_config(config_path)
+    
+    # Download datasets
+    logging.info("Starting dataset downloads")
+    download_datasets(config, data_dir)
+    
+    # Load ATT&CK mappings for KEV cross-referencing
+    attack_mappings = load_attack_mappings(data_dir)
+    if not attack_mappings:
+        logging.warning("No ATT&CK mappings loaded; KEV ATT&CK parsing may be limited")
+    
+    # Parse all datasets
+    logging.info("Parsing datasets")
+    all_risks = parse_all_datasets(data_dir, attack_mappings)
+    
+    # Map risks to controls
+    logging.info("Mapping risks to NIST controls")
+    controls, _ = map_risks_to_controls(all_risks, data_dir)
+    
+    # Normalize and prioritize controls
+    weights = config.get("weights", {"exploitation": 0.4, "severity": 0.4, "applicability": 0.2})
+    logging.info(f"Using weights: {weights}")
+    prioritized_controls = normalize_and_prioritize(controls, weights)
+    
+    # Write outputs
+    logging.info("Writing outputs")
+    write_outputs(prioritized_controls, data_dir)
+    
+    logging.info("Processing complete")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Process risk data and prioritize NIST controls")
+    parser.add_argument("--config", default="config.json", help="Path to configuration file")
+    parser.add_argument("--data_dir", default="data", help="Directory for data files")
+    args = parser.parse_args()
+    
+    try:
+        main(args.config, args.data_dir)
+    except Exception as e:
+        logging.error(f"Program failed: {e}")
+        raise
