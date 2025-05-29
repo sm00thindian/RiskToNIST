@@ -1,6 +1,10 @@
 import pandas as pd
 import json
 import os
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def parse_csv(csv_path):
     """Parse a single CSV to extract risks, mitigating controls, and scores.
@@ -24,9 +28,10 @@ def parse_csv(csv_path):
                 "exploitation_score": exploitation_score,
                 "impact_score": impact_score
             })
+        logging.info(f"Parsed {len(risks)} risks from {csv_path}")
         return risks
     except Exception as e:
-        print(f"Error parsing {csv_path}: {e}")
+        logging.error(f"Error parsing {csv_path}: {e}")
         return []
 
 def parse_nvd(data_dir):
@@ -46,18 +51,22 @@ def parse_nvd(data_dir):
     cve_dict = {}
     for path in paths:
         if not os.path.exists(path):
-            print(f"{path} not found, skipping.")
+            logging.warning(f"{path} not found, skipping.")
             continue
         try:
             with open(path, "r") as f:
                 data = json.load(f)
-            for item in data.get("CVE_Items", []):
+            cve_items = data.get("CVE_Items", [])
+            logging.info(f"Found {len(cve_items)} items in {path}")
+            for item in cve_items:
                 cve = item.get("cve", {})
                 cve_id = cve.get("id")
                 if cve_id:
                     cve_dict[cve_id] = item
+                else:
+                    logging.warning(f"Skipping item in {path} with missing cve.id")
         except json.JSONDecodeError as e:
-            print(f"Failed to parse {path}: {e}")
+            logging.error(f"Failed to parse {path}: {e}")
             continue
     
     risks = []
@@ -65,18 +74,23 @@ def parse_nvd(data_dir):
         cve = item.get("cve", {})
         cve_id = cve.get("id")
         if not cve_id:
+            logging.warning("Skipping item with missing cve.id")
             continue
         score = 0.0
         metrics = cve.get("metrics", {})
         cvss_v31 = metrics.get("cvssMetricV31", [])
         if cvss_v31 and len(cvss_v31) > 0:
-            score = cvss_v31[0].get("cvssData", {}).get("baseScore", 0.0)
+            cvss_data = cvss_v31[0].get("cvssData", {})
+            score = cvss_data.get("baseScore", 0.0)
+            logging.debug(f"CVE {cve_id}: CVSS score {score}")
+        else:
+            logging.debug(f"CVE {cve_id}: No CVSS v3.1 score, defaulting to 0.0")
         risks.append({
             "mitigating_controls": ["RA-5"],  # Default mapping for vulnerabilities
             "exploitation_score": score,
             "impact_score": score  # Use CVSS score for both
         })
-    print(f"Parsed {len(risks)} CVEs from NVD JSON files")
+    logging.info(f"Parsed {len(risks)} CVEs from NVD JSON files")
     return risks
 
 def parse_all_datasets(data_dir="data"):
@@ -98,5 +112,8 @@ def parse_all_datasets(data_dir="data"):
     # Parse NVD data if present
     if any(os.path.exists(os.path.join(data_dir, f)) for f in ["nvdcve-1.1-2025.json", "nvdcve-1.1-recent.json", "nvdcve-1.1-modified.json"]):
         all_risks["nvd_cve"] = parse_nvd(data_dir)
+    
+    if not all_risks:
+        logging.error("No valid risk data parsed from any source.")
     
     return all_risks
