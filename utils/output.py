@@ -77,12 +77,34 @@ def generate_html(prioritized_controls, output_path="outputs/controls.html"):
         f.write(html_content)
     print(f"Saved HTML to {output_path}")
 
-def generate_outputs(prioritized_controls):
-    """Generate JSON, CSV, and HTML outputs for prioritized controls.
+def generate_attack_mappings_json(attack_mappings, output_path="outputs/attack_mappings.json"):
+    """Generate pretty-printed JSON for ATT&CK to NIST 800-53 mappings.
+
+    Args:
+        attack_mappings (dict): Dictionary mapping ATT&CK techniques to NIST controls.
+        output_path (str): Path to save the JSON file.
+    """
+    output = [
+        {
+            "technique_id": technique,
+            "nist_controls": controls
+        }
+        for technique, controls in attack_mappings.items()
+    ]
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump({"mappings": output}, f, indent=2)
+    print(f"Saved ATT&CK mappings to {output_path}")
+
+def generate_outputs(prioritized_controls, attack_mappings=None):
+    """Generate JSON, CSV, HTML, and ATT&CK mappings outputs.
 
     Args:
         prioritized_controls (list): List of tuples (control_id, control_data).
+        attack_mappings (dict, optional): ATT&CK to NIST control mappings.
     """
     generate_json(prioritized_controls)
     generate_csv(prioritized_controls)
     generate_html(prioritized_controls)
+    if attack_mappings:
+        generate_attack_mappings_json(attack_mappings)
