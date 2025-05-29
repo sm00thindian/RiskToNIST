@@ -98,7 +98,7 @@ def map_risks_to_controls(all_risks, data_dir="data"):
         for risk in risks:
             controls_to_map = risk["mitigating_controls"]
             # Enhance NVD and CISA KEV with ATT&CK mappings
-            if source_name in ["nvd_cve", "cisa_kev"] and attack_mappings:
+            if source_name in ["nvd_cve", "cisa_kev", "fallback"] and attack_mappings:
                 cwe = risk.get("cwe", "")
                 if isinstance(cwe, str):
                     if "CWE-22" in cwe:
@@ -113,6 +113,10 @@ def map_risks_to_controls(all_risks, data_dir="data"):
                         if "T1078" in attack_mappings:
                             controls_to_map.extend(attack_mappings["T1078"])  # Valid Accounts
                             logging.debug(f"Applied T1078 controls for CWE-94/288/502/78: {attack_mappings['T1078']}")
+                    elif "CWE-416" in cwe:
+                        if "T1203" in attack_mappings:
+                            controls_to_map.extend(attack_mappings["T1203"])  # Exploitation for Client Execution
+                            logging.debug(f"Applied T1203 controls for CWE-416: {attack_mappings.get('T1203', [])}")
                 controls_to_map = list(set(controls_to_map))  # Remove duplicates
             
             for control_id in controls_to_map:
@@ -136,14 +140,14 @@ def map_risks_to_controls(all_risks, data_dir="data"):
     return controls, attack_mappings
 
 def normalize_and_prioritize(controls, weights):
-    """Calculate total scores and prioritize top 50 controls using configurable weights.
+    """Calculate total scores and prioritize all controls by total score descending.
 
     Args:
         controls (dict): Dictionary of controls with risk scores.
         weights (dict): Dictionary with 'exploitation', 'severity', and 'applicability' weights.
 
     Returns:
-        list: Top 50 controls sorted by total score.
+        list: All controls sorted by total score in descending order.
     """
     total_weight = sum(weights.values())
     if abs(total_weight - 1.0) > 0.01:
@@ -159,6 +163,6 @@ def normalize_and_prioritize(controls, weights):
             weights["applicability"] * control["applicability"]
         )
         logging.debug(f"Control {control_id}: total_score={control['total_score']}")
-    prioritized = sorted(controls.items(), key=lambda x: x[1]["total_score"], reverse=True)[:50]
+    prioritized = sorted(controls.items(), key=lambda x: x[1]["total_score"], reverse=True)
     logging.info(f"Prioritized {len(prioritized)} controls")
     return prioritized
