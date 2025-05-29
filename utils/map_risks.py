@@ -88,7 +88,7 @@ def map_risks_to_controls(all_risks, data_dir="data"):
         data_dir (str): Directory containing data files.
 
     Returns:
-        dict: Dictionary of controls with risk scores.
+        tuple: (controls, attack_mappings) Dictionary of controls and ATT&CK mappings.
     """
     controls = load_nist_controls()
     attack_mappings = load_attack_mappings(data_dir)
@@ -99,9 +99,13 @@ def map_risks_to_controls(all_risks, data_dir="data"):
             controls_to_map = risk["mitigating_controls"]
             # Enhance NVD CVEs with ATT&CK mappings
             if source_name == "nvd_cve" and attack_mappings:
-                for technique, mapped_controls in attack_mappings.items():
-                    controls_to_map.extend(mapped_controls)
-                    controls_to_map = list(set(controls_to_map))  # Remove duplicates
+                # Apply scores to controls for common techniques
+                common_techniques = ["T1190", "T1566", "T1078"]  # Exploit Public-Facing App, Phishing, Valid Accounts
+                for technique in common_techniques:
+                    if technique in attack_mappings:
+                        controls_to_map.extend(attack_mappings[technique])
+                        logging.debug(f"Applied technique {technique} controls: {attack_mappings[technique]}")
+                controls_to_map = list(set(controls_to_map))  # Remove duplicates
             
             for control_id in controls_to_map:
                 control_id = control_id.upper()  # Ensure uppercase
@@ -120,8 +124,8 @@ def map_risks_to_controls(all_risks, data_dir="data"):
     
     # Log controls with non-zero scores
     non_zero_controls = [cid for cid, data in controls.items() if data["max_exploitation"] > 0 or data["max_severity"] > 0]
-    logging.info(f"Controls with non-zero scores: {len(non_zero_controls)}")
-    return controls, attack_mappings  # Return mappings for output
+    logging.info(f"Controls with non-zero scores: {len(non_zero_controls)} ({', '.join(non_zero_controls)})")
+    return controls, attack_mappings
 
 def normalize_and_prioritize(controls, weights):
     """Calculate total scores and prioritize top 50 controls using configurable weights.
