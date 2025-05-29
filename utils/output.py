@@ -1,110 +1,69 @@
 import json
-import pandas as pd
-from jinja2 import Environment, FileSystemLoader
+import csv
 import os
+import logging
+from jinja2 import Environment, FileSystemLoader
 
-def generate_json(prioritized_controls, output_path="outputs/controls.json"):
-    """Generate JSON output with control details.
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def write_outputs(prioritized_controls, data_dir):
+    """Write prioritized controls to JSON, CSV, and HTML files.
 
     Args:
-        prioritized_controls (list): List of tuples (control_id, control_data).
-        output_path (str): Path to save the JSON file.
+        prioritized_controls (list): List of tuples (control_id, control_details).
+        data_dir (str): Directory to save output files.
     """
-    output = [
-        {
-            "id": cid,
-            "name": data["title"],
-            "family": data["family_title"],
-            "max_exploitation": data["max_exploitation"],
-            "max_severity": data["max_severity"],
-            "applicability": data["applicability"],
-            "total_score": data["total_score"]
-        }
-        for cid, data in prioritized_controls
+    os.makedirs(data_dir, exist_ok=True)
+    output_dir = os.path.join(data_dir, "outputs")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Write JSON output
+    json_path = os.path.join(output_dir, "controls.json")
+    try:
+        controls_dict = {control_id: details for control_id, details in prioritized_controls}
+        with open(json_path, "w") as f:
+            json.dump(controls_dict, f, indent=2)
+        logging.info(f"Wrote JSON output to {json_path}")
+    except Exception as e:
+        logging.error(f"Failed to write JSON to {json_path}: {e}")
+    
+    # Write CSV output
+    csv_path = os.path.join(output_dir, "top_50_controls.csv")
+    try:
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Control ID", "Title", "Family", "Total Score", "Max Exploitation", "Max Severity", "Applicability"])
+            for control_id, details in prioritized_controls[:50]:  # Top 50
+                writer.writerow([
+                    control_id,
+                    details.get("title", ""),
+                    details.get("family_title", ""),
+                    round(details.get("total_score", 0.0), 2),
+                    round(details.get("max_exploitation", 0.0), 2),
+                    round(details.get("max_severity", 0.0), 2),
+                    round(details.get("applicability", 0.0), 2)
+                ])
+        logging.info(f"Wrote CSV output to {csv_path}")
+    except Exception as e:
+        logging.error(f"Failed to write CSV to {csv_path}: {e}")
+    
+    # Write HTML output
+    html_path = os.path.join(output_dir, "controls.html")
+    try:
+        env = Environment(loader=FileSystemLoader("."))
+        template = env.get_template("controls.html")
+        html_content = template.render(controls=prioritized_controls)
+        with open(html_path, "w") as f:
+            f.write(html_content)
+        logging.info(f"Wrote HTML output to {html_path}")
+    except Exception as e:
+        logging.error(f"Failed to write HTML to {html_path}: {e}")
+
+if __name__ == "__main__":
+    # Example usage for testing
+    sample_controls = [
+        ("AC-2", {"title": "Account Management", "family_title": "Access Control", "total_score": 9.8, "max_exploitation": 10.0, "max_severity": 10.0, "applicability": 7.0}),
+        ("SI-2", {"title": "Flaw Remediation", "family_title": "System and Information Integrity", "total_score": 8.0, "max_exploitation": 8.0, "max_severity": 8.0, "applicability": 7.0})
     ]
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, "w") as f:
-        json.dump({"controls": output}, f, indent=2)
-    print(f"Saved JSON to {output_path}")
-
-def generate_csv(prioritized_controls, output_path="outputs/top_50_controls.csv"):
-    """Generate CSV output with specified fields.
-
-    Args:
-        prioritized_controls (list): List of tuples (control_id, control_data).
-        output_path (str): Path to save the CSV file.
-    """
-    data = [
-        {
-            "Control ID": cid,
-            "Control Name": data["title"],
-            "Control Family": data["family_title"],
-            "max_exploitation": data["max_exploitation"],
-            "max_severity": data["max_severity"],
-            "applicability": data["applicability"],
-            "total_score": data["total_score"]
-        }
-        for cid, data in prioritized_controls
-    ]
-    df = pd.DataFrame(data)
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    df.to_csv(output_path, index=False)
-    print(f"Saved CSV to {output_path}")
-
-def generate_html(prioritized_controls, output_path="outputs/controls.html"):
-    """Generate HTML output using a Jinja2 template.
-
-    Args:
-        prioritized_controls (list): List of tuples (control_id, control_data).
-        output_path (str): Path to save the HTML file.
-    """
-    env = Environment(loader=FileSystemLoader("templates"))
-    template = env.get_template("controls.html")
-    html_content = template.render(controls=[
-        {
-            "id": cid,
-            "name": data["title"],
-            "family": data["family_title"],
-            "max_exploitation": data["max_exploitation"],
-            "max_severity": data["max_severity"],
-            "applicability": data["applicability"],
-            "total_score": data["total_score"]
-        }
-        for cid, data in prioritized_controls
-    ])
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, "w") as f:
-        f.write(html_content)
-    print(f"Saved HTML to {output_path}")
-
-def generate_attack_mappings_json(attack_mappings, output_path="outputs/attack_mappings.json"):
-    """Generate pretty-printed JSON for ATT&CK to NIST 800-53 mappings.
-
-    Args:
-        attack_mappings (dict): Dictionary mapping ATT&CK techniques to NIST controls.
-        output_path (str): Path to save the JSON file.
-    """
-    output = [
-        {
-            "technique_id": technique,
-            "nist_controls": controls
-        }
-        for technique, controls in attack_mappings.items()
-    ]
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, "w") as f:
-        json.dump({"mappings": output}, f, indent=2)
-    print(f"Saved ATT&CK mappings to {output_path}")
-
-def generate_outputs(prioritized_controls, attack_mappings=None):
-    """Generate JSON, CSV, HTML, and ATT&CK mappings outputs.
-
-    Args:
-        prioritized_controls (list): List of tuples (control_id, control_data).
-        attack_mappings (dict, optional): ATT&CK to NIST control mappings.
-    """
-    generate_json(prioritized_controls)
-    generate_csv(prioritized_controls)
-    generate_html(prioritized_controls)
-    if attack_mappings:
-        generate_attack_mappings_json(attack_mappings)
+    write_outputs(sample_controls, "data")
