@@ -1,198 +1,123 @@
 import json
-import os
-import requests
 import logging
+import os
+from collections import defaultdict
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def normalize_control_id(control_id):
-    """Normalize control ID by removing leading zeros from the numeric part.
+def load_attack_mappings(data_dir):
+    """Load ATT&CK to NIST control mappings.
 
     Args:
-        control_id (str): The control ID to normalize (e.g., 'AC-02', 'SI-2').
+        data_dir (str): Directory containing attack_mapping.json.
 
     Returns:
-        str: Normalized control ID (e.g., 'AC-2', 'SI-2').
+        dict: ATT&CK to NIST control mappings.
     """
-    if '-' in control_id:
-        family, num = control_id.split('-', 1)
-        num = num.lstrip('0') or '0'
-        return f"{family.upper()}-{num}"
-    return control_id.upper()
-
-def load_nist_controls():
-    """Load NIST SP 800-53 controls from OSCAL JSON, including family info.
-
-    Returns:
-        dict: Dictionary of control IDs to details.
-    """
-    filepath = "mappings/nist_controls.json"
-    url = "https://github.com/usnistgov/oscal-content/raw/refs/heads/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json"
-    
-    if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            with open(filepath, "wb") as f:
-                f.write(response.content)
-            logging.info(f"Downloaded NIST controls to {filepath}")
-        except requests.RequestException as e:
-            logging.error(f"Failed to download NIST controls: {e}")
-            return {}
-    
+    attack_mapping_path = os.path.join(data_dir, "attack_mapping.json")
     try:
-        with open(filepath, "r") as f:
-            data = json.load(f)
-        controls = {}
-        for group in data["catalog"]["groups"]:
-            family_id = group["id"]
-            family_title = group["title"]
-            for control in group["controls"]:
-                control_id = normalize_control_id(control["id"])
-                controls[control_id] = {
-                    "title": control["title"],
-                    "family_id": family_id,
-                    "family_title": family_title,
-                    "applicability": 7.0,
-                    "max_exploitation": 0.0,
-                    "max_severity": 0.0
-                }
-        logging.info(f"Loaded {len(controls)} NIST controls")
-        return controls
-    except (KeyError, json.JSONDecodeError) as e:
-        logging.error(f"Invalid OSCAL structure or JSON: {e}")
-        return {}
-
-def load_attack_mappings(data_dir="data"):
-    """Load MITRE ATT&CK to NIST 800-53 mappings.
-
-    Args:
-        data_dir (str): Directory containing the attack_mapping.json file.
-
-    Returns:
-        dict: Dictionary mapping ATT&CK techniques to NIST control IDs.
-    """
-    filepath = os.path.join(data_dir, "attack_mapping.json")
-    if not os.path.exists(filepath):
-        logging.error(f"{filepath} not found, no ATT&CK mappings loaded.")
-        return {}
-    try:
-        with open(filepath, "r") as f:
-            data = json.load(f)
-        logging.debug(f"Contents of {filepath}: {json.dumps(data, indent=2)[:1000]}...")
-        mappings = {}
-        if not isinstance(data.get("mapping_objects"), list):
-            logging.error(f"Invalid structure in {filepath}: 'mapping_objects' key missing or not a list")
-            return {}
-        for item in data.get("mapping_objects", []):
-            if not isinstance(item, dict):
-                logging.warning(f"Skipping invalid item in {filepath}: {item}")
-                continue
-            if item.get("mapping_type") == "mitigates" and item.get("capability_id") and item.get("attack_object_id"):
-                technique = item.get("attack_object_id")
-                control_id = normalize_control_id(item.get("capability_id"))
-                mappings.setdefault(technique, []).append(control_id)
-        logging.info(f"Loaded {len(mappings)} ATT&CK technique mappings")
+        with open(attack_mapping_path, "r") as f:
+            mappings = json.load(f)
+        logging.info(f"Loaded {len(mappings.get('mapping_objects', []))} ATT&CK technique mappings from {attack_mapping_path}")
         return mappings
-    except json.JSONDecodeError as e:
-        logging.error(f"Error parsing {filepath}: {e}")
-        return {}
     except Exception as e:
-        logging.error(f"Unexpected error loading {filepath}: {e}")
+        logging.error(f"Failed to load attack mappings from {attack_mapping_path}: {e}")
         return {}
 
-def map_risks_to_controls(all_risks, data_dir="data"):
-    """Map risks from all sources to NIST controls, tracking max scores.
+def normalize_control_id(control_id):
+    """Normalize NIST control ID (e.g., AC-02 to AC-2).
 
     Args:
-        all_risks (dict): Dictionary of source names to lists of risks.
+        control_id (str): Raw control ID.
+
+    Returns:
+        str: Normalized control ID.
+    """
+    if not control_id:
+        return control_id
+    parts = control_id.split("-")
+    if len(parts) == 2:
+        prefix, num = parts
+        return f"{prefix}-{int(num):d}"
+    return control_id
+
+def map_risks_to_controls(all_risks, data_dir):
+    """Map risks to NIST controls and compute scores.
+
+    Args:
+        all_risks (dict): Dictionary of risks by source.
         data_dir (str): Directory containing data files.
 
     Returns:
-        tuple: (controls, attack_mappings) Dictionary of controls and ATT&CK mappings.
+        tuple: Dictionary of controls with scores, dictionary of control details.
     """
-    controls = load_nist_controls()
-    attack_mappings = load_attack_mappings(data_dir)
+    controls = defaultdict(lambda: {
+        "max_exploitation": 0.0,
+        "max_severity": 0.0,
+        "applicability": 7.0,
+        "total_score": 0.0,
+        "title": "",
+        "family_title": "",
+        "risk_contexts": []
+    })
+    control_details = {}
     
-    for source_name, risks in all_risks.items():
-        logging.info(f"Mapping {len(risks)} risks from {source_name}")
+    # Load NIST control details
+    control_details_path = os.path.join(data_dir, "nist_controls.json")
+    if os.path.exists(control_details_path):
+        try:
+            with open(control_details_path, "r") as f:
+                control_details = json.load(f)
+        except Exception as e:
+            logging.error(f"Failed to load NIST control details: {e}")
+    
+    for source, risks in all_risks.items():
         for risk in risks:
-            controls_to_map = risk["mitigating_controls"]
-            # Enhance NVD, CISA KEV, KEV ATT&CK, and fallback with ATT&CK mappings
-            if source_name in ["nvd_cve", "cisa_kev", "kev_attack", "fallback"] and attack_mappings:
-                cwe = risk.get("cwe", "")
-                if isinstance(cwe, str):
-                    if "CWE-22" in cwe and "T1190" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1190"])  # Exploit Public-Facing App
-                        logging.debug(f"Applied T1190 controls for CWE-22: {attack_mappings['T1190']}")
-                    elif "CWE-79" in cwe and "T1566" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1566"])  # Phishing
-                        logging.debug(f"Applied T1566 controls for CWE-79: {attack_mappings['T1566']}")
-                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-502", "CWE-78", "CWE-287"]) and "T1078" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1078"])  # Valid Accounts
-                        logging.debug(f"Applied T1078 controls for CWE-94/288/502/78/287: {attack_mappings['T1078']}")
-                    elif "CWE-416" in cwe and "T1203" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1203"])  # Exploitation for Client Execution
-                        logging.debug(f"Applied T1203 controls for CWE-416: {attack_mappings.get('T1203', [])}")
-                    elif "CWE-20" in cwe and "T1210" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1210"])  # Exploitation of Remote Services
-                        logging.debug(f"Applied T1210 controls for CWE-20: {attack_mappings.get('T1210', [])}")
-                    elif any(cwe_id in cwe for cwe_id in ["CWE-400", "CWE-770"]) and "T1499" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1499"])  # Endpoint Denial of Service
-                        logging.debug(f"Applied T1499 controls for CWE-400/770: {attack_mappings.get('T1499', [])}")
-                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-287"]) and "T1530" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1530"])  # Cloud Storage
-                        logging.debug(f"Applied T1530 controls for CWE-94/288/287: {attack_mappings.get('T1530', [])}")
-                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-287"]) and "T1072" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1072"])  # Software Deployment Tools
-                        logging.debug(f"Applied T1072 controls for CWE-94/288/287: {attack_mappings.get('T1072', [])}")
-                controls_to_map = list(set(controls_to_map))  # Remove duplicates
-            
-            for control_id in controls_to_map:
-                control_id = normalize_control_id(control_id)
-                if control_id in controls:
-                    controls[control_id]["max_exploitation"] = max(
-                        controls[control_id]["max_exploitation"],
-                        risk["exploitation_score"]
-                    )
-                    controls[control_id]["max_severity"] = max(
-                        controls[control_id]["max_severity"],
-                        risk["impact_score"]
-                    )
-                    logging.debug(f"Updated {control_id}: max_exploitation={controls[control_id]['max_exploitation']}, max_severity={controls[control_id]['max_severity']}")
-                else:
-                    logging.warning(f"Control {control_id} not found in NIST catalog")
+            for control_id in risk.get("mitigating_controls", []):
+                normalized_id = normalize_control_id(control_id)
+                controls[normalized_id]["max_exploitation"] = max(
+                    controls[normalized_id]["max_exploitation"],
+                    risk.get("exploitation_score", 0.0)
+                )
+                controls[normalized_id]["max_severity"] = max(
+                    controls[normalized_id]["max_severity"],
+                    risk.get("impact_score", 0.0)
+                )
+                if risk.get("risk_context"):
+                    context_entry = {
+                        "cve_id": risk.get("cve_id", ""),
+                        "context": risk.get("risk_context", ""),
+                        "source": source
+                    }
+                    if context_entry not in controls[normalized_id]["risk_contexts"]:
+                        controls[normalized_id]["risk_contexts"].append(context_entry)
+                # Set control details
+                details = control_details.get(normalized_id, {})
+                controls[normalized_id]["title"] = details.get("title", normalized_id)
+                controls[normalized_id]["family_title"] = details.get("family_title", "")
     
-    # Log controls with non-zero scores
-    non_zero_controls = [cid for cid, data in controls.items() if data["max_exploitation"] > 0 or data["max_severity"] > 0]
-    logging.info(f"Controls with non-zero scores: {len(non_zero_controls)} ({', '.join(non_zero_controls)})")
-    return controls, attack_mappings
+    return controls, control_details
 
 def normalize_and_prioritize(controls, weights):
-    """Calculate total scores and prioritize all controls by total score descending.
+    """Normalize and prioritize controls based on scores.
 
     Args:
-        controls (dict): Dictionary of controls with risk scores.
-        weights (dict): Dictionary with 'exploitation', 'severity', and 'applicability' weights.
+        controls (dict): Dictionary of controls with scores.
+        weights (dict): Weights for scoring components.
 
     Returns:
-        list: All controls sorted by total score in descending order.
+        list: List of tuples (control_id, control_details) sorted by total_score.
     """
-    total_weight = sum(weights.values())
-    if abs(total_weight - 1.0) > 0.01:
-        logging.error(f"Weights sum to {total_weight}, must sum to 1.0")
-        raise ValueError("Weights must sum to 1.0")
-    
-    logging.info(f"Using weights: exploitation={weights['exploitation']}, severity={weights['severity']}, applicability={weights['applicability']}")
-    
-    for control_id, control in controls.items():
-        control["total_score"] = (
-            weights["exploitation"] * control["max_exploitation"] +
-            weights["severity"] * control["max_severity"] +
-            weights["applicability"] * control["applicability"]
+    prioritized = []
+    for control_id, details in controls.items():
+        total_score = (
+            weights["exploitation"] * details["max_exploitation"] +
+            weights["severity"] * details["max_severity"] +
+            weights["applicability"] * details["applicability"]
         )
-        logging.debug(f"Control {control_id}: total_score={control['total_score']}")
-    prioritized = sorted(controls.items(), key=lambda x: x[1]["total_score"], reverse=True)
-    logging.info(f"Prioritized {len(prioritized)} controls")
+        details["total_score"] = total_score
+        prioritized.append((control_id, details))
+    
+    prioritized.sort(key=lambda x: x[1]["total_score"], reverse=True)
     return prioritized
