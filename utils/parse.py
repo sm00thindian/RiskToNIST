@@ -265,4 +265,5 @@ def parse_all_datasets(data_dir="data", attack_mappings=None):
     ])
     logging.info("Added fallback risks for SI-2, IA-5, AT-2, SC-8, CM-6, SI-7, SC-5, IA-2, AC-3, AC-4, AC-6")
     
-    logging.info(f"Parsed risks from {csv_count} CSVs, NVD, and KEV ATT&CK
+    logging.info(f"Parsed risks from {csv_count} CSVs, NVD, and KEV ATT&CK data: {sum(len(risks) for risks in all_risks.values())} total risks")
+    return all_risks
