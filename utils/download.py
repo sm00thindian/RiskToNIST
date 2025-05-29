@@ -1,122 +1,82 @@
-import json
 import os
 import requests
-import time
-from datetime import datetime, timedelta
 import logging
+import time
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def download_datasets(config_path="config.json", data_dir="data"):
-    """Download enabled datasets (CSV, JSON, or API) from URLs specified in the config file.
+def download_file(url, output_path, retries=3, delay=5):
+    """Download a file from a URL to the specified path with retries.
 
     Args:
-        config_path (str): Path to the configuration file.
+        url (str): URL to download from.
+        output_path (str): Local path to save the file.
+        retries (int): Number of retry attempts.
+        delay (int): Delay between retries in seconds.
+
+    Returns:
+        bool: True if download succeeded, False otherwise.
+    """
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, timeout=30, stream=True)
+            response.raise_for_status()
+            
+            with open(output_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            logging.info(f"Successfully downloaded {url} to {output_path}")
+            return True
+        
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"Attempt {attempt + 1}/{retries} failed for {url}: {e}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                logging.error(f"Failed to download {url} after {retries} attempts")
+                return False
+
+def download_datasets(config, data_dir="data"):
+    """Download datasets specified in the configuration.
+
+    Args:
+        config (dict): Configuration dictionary with sources.
         data_dir (str): Directory to save downloaded files.
     """
     os.makedirs(data_dir, exist_ok=True)
     
-    try:
-        with open(config_path, "r") as f:
-            config = json.load(f)
-    except Exception as e:
-        logging.error(f"Failed to read {config_path}: {e}")
-        return
-    
-    for source in config["sources"]:
+    for source in config.get("sources", []):
         if not source.get("enabled", False):
             logging.info(f"Skipping disabled source: {source['name']}")
             continue
         
+        url = source.get("url")
+        source_name = source.get("name")
         source_type = source.get("type")
-        url = source["url"]
-        name = source["name"].replace(" ", "_").lower()
         
-        if source_type in ["csv", "json"]:
-            file_ext = source_type
-            filename = f"{name}.{file_ext}"
-            filepath = os.path.join(data_dir, filename)
-            if not os.path.exists(filepath):
-                try:
-                    response = requests.get(url, timeout=10)
-                    response.raise_for_status()
-                    with open(filepath, "wb") as f:
-                        f.write(response.content)
-                    logging.info(f"Downloaded {filename}")
-                except requests.RequestException as e:
-                    logging.error(f"Error downloading {filename}: {e}")
-            else:
-                logging.info(f"{filename} already exists, skipping download.")
+        if source_type == "csv":
+            output_path = os.path.join(data_dir, f"{source_name.lower().replace(' ', '_')}.csv")
+        elif source_type == "json":
+            output_path = os.path.join(data_dir, f"{source_name.lower().replace(' ', '_')}.json")
+        else:
+            logging.warning(f"Unsupported source type {source_type} for {source_name}")
+            continue
         
-        elif source_type == "api" and source["name"] == "NVD CVE":
-            api_key = os.environ.get("NVD_API_KEY")
-            if not api_key:
-                logging.error("NVD_API_KEY environment variable not set.")
-                continue
-            
-            headers = {"apiKey": api_key}
-            results_per_page = 2000  # NVD API max
-            start_date = datetime(2025, 1, 1)
-            end_date = datetime.now()
-            delta = timedelta(days=30)
-            
-            # Output files
-            base_filepath = os.path.join(data_dir, "nvdcve-1.1-2025.json")
-            recent_filepath = os.path.join(data_dir, "nvdcve-1.1-recent.json")
-            modified_filepath = os.path.join(data_dir, "nvdcve-1.1-modified.json")
-            
-            if all(os.path.exists(p) for p in [base_filepath, recent_filepath, modified_filepath]):
-                logging.info("NVD JSON files already exist, skipping download.")
-                continue
-            
-            cve_items = []
-            current_start = start_date
-            request_count = 0
-            while current_start < end_date:
-                current_end = min(current_start + delta, end_date)
-                params = {
-                    "lastModStartDate": current_start.strftime("%Y-%m-%dT%H:%M:%S.000"),
-                    "lastModEndDate": current_end.strftime("%Y-%m-%dT%H:%M:%S.999"),
-                    "resultsPerPage": results_per_page,
-                    "startIndex": 0
-                }
-                
-                while True:
-                    try:
-                        response = requests.get(url, headers=headers, params=params, timeout=10)
-                        request_count += 1
-                        if response.status_code == 404:
-                            logging.info(f"No CVEs for {current_start} to {current_end}, continuing...")
-                            break
-                        response.raise_for_status()
-                        data = response.json()
-                        vulnerabilities = data.get("vulnerabilities", [])
-                        cve_items.extend(vulnerabilities)
-                        logging.info(f"Fetched {len(vulnerabilities)} CVEs for {current_start} to {current_end}")
-                        total_results = data.get("totalResults", 0)
-                        params["startIndex"] += results_per_page
-                        if params["startIndex"] >= total_results:
-                            break
-                        if request_count % 5 == 0:
-                            time.sleep(3)  # Rate limit: 50 requests per 30 seconds
-                    except requests.RequestException as e:
-                        logging.error(f"Error fetching NVD CVEs for {current_start} to {current_end}: {e}")
-                
-                current_start = current_end + timedelta(seconds=1)
-            
-            # Save NVD data
-            with open(base_filepath, "w") as f:
-                json.dump({"CVE_Items": cve_items}, f, indent=2)
-            logging.info(f"Saved {base_filepath}")
-            
-            recent_date = end_date - timedelta(days=8)
-            recent_items = [item for item in cve_items if datetime.strptime(item["cve"]["published"], "%Y-%m-%dT%H:%M:%S.%f") >= recent_date]
-            with open(recent_filepath, "w") as f:
-                json.dump({"CVE_Items": recent_items}, f, indent=2)
-            logging.info(f"Saved {recent_filepath}")
-            
-            modified_items = [item for item in cve_items if datetime.strptime(item["cve"]["lastModified"], "%Y-%m-%dT%H:%M:%S.%f") >= recent_date]
-            with open(modified_filepath, "w") as f:
-                json.dump({"CVE_Items": modified_items}, f, indent=2)
-            logging.info(f"Saved {modified_filepath}")
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            logging.info(f"{output_path} already exists, skipping download.")
+            continue
+        
+        logging.info(f"Downloading {source_name} from {url}")
+        if not download_file(url, output_path):
+            logging.error(f"Failed to download {source_name}")
+
+if __name__ == "__main__":
+    # Example usage
+    with open("config.json", "r") as f:
+        config = json.load(f)
+    download_datasets(config)
