@@ -4,7 +4,7 @@ import requests
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_nist_controls():
     """Load NIST SP 800-53 controls from OSCAL JSON, including family info.
@@ -34,7 +34,7 @@ def load_nist_controls():
             family_id = group["id"]
             family_title = group["title"]
             for control in group["controls"]:
-                control_id = control["id"].upper()  # Normalize to uppercase
+                control_id = control["id"].upper()
                 controls[control_id] = {
                     "title": control["title"],
                     "family_id": family_id,
@@ -97,18 +97,25 @@ def map_risks_to_controls(all_risks, data_dir="data"):
         logging.info(f"Mapping {len(risks)} risks from {source_name}")
         for risk in risks:
             controls_to_map = risk["mitigating_controls"]
-            # Enhance NVD CVEs with ATT&CK mappings
-            if source_name == "nvd_cve" and attack_mappings:
-                # Apply scores to controls for common techniques
-                common_techniques = ["T1190", "T1566", "T1078"]  # Exploit Public-Facing App, Phishing, Valid Accounts
-                for technique in common_techniques:
-                    if technique in attack_mappings:
-                        controls_to_map.extend(attack_mappings[technique])
-                        logging.debug(f"Applied technique {technique} controls: {attack_mappings[technique]}")
+            # Enhance NVD and CISA KEV with ATT&CK mappings
+            if source_name in ["nvd_cve", "cisa_kev"] and attack_mappings:
+                cwe = risk.get("cwe", "")
+                if "CWE-22" in cwe:
+                    if "T1190" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1190"])  # Exploit Public-Facing App
+                        logging.debug(f"Applied T1190 controls for CWE-22: {attack_mappings['T1190']}")
+                elif "CWE-79" in cwe:
+                    if "T1566" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1566"])  # Phishing
+                        logging.debug(f"Applied T1566 controls for CWE-79: {attack_mappings['T1566']}")
+                elif any(cwe in ["CWE-94", "CWE-288", "CWE-502", "CWE-78"] for cwe in cwe):
+                    if "T1078" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1078"])  # Valid Accounts
+                        logging.debug(f"Applied T1078 controls for CWE-94/288/502/78: {attack_mappings['T1078']}")
                 controls_to_map = list(set(controls_to_map))  # Remove duplicates
             
             for control_id in controls_to_map:
-                control_id = control_id.upper()  # Ensure uppercase
+                control_id = control_id.upper()
                 if control_id in controls:
                     controls[control_id]["max_exploitation"] = max(
                         controls[control_id]["max_exploitation"],
@@ -137,7 +144,6 @@ def normalize_and_prioritize(controls, weights):
     Returns:
         list: Top 50 controls sorted by total score.
     """
-    # Validate weights
     total_weight = sum(weights.values())
     if abs(total_weight - 1.0) > 0.01:
         logging.error(f"Weights sum to {total_weight}, must sum to 1.0")
