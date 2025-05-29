@@ -38,6 +38,8 @@ def parse_csv(csv_path):
                         controls.extend(["SI-10"])  # Deserialization, Command Injection
                     elif "CWE-416" in cwe:
                         controls.extend(["SI-16"])  # Use-After-Free
+                    elif "CWE-287" in cwe:
+                        controls.extend(["IA-2"])  # Authentication Issues
                 risks.append({
                     "mitigating_controls": controls,
                     "exploitation_score": 10.0,
@@ -119,6 +121,8 @@ def parse_nvd(data_dir):
             controls.extend(["AC-2"])  # Code Injection, Auth Bypass
         elif cwe == "CWE-502" or cwe == "CWE-78":
             controls.extend(["SI-10"])  # Deserialization, Command Injection
+        elif cwe == "CWE-287":
+            controls.extend(["IA-2"])  # Authentication Issues
         if cvss_v31 and len(cvss_v31) > 0:
             cvss_data = cvss_v31[0].get("cvssData", {})
             score = cvss_data.get("baseScore", 0.0)
@@ -160,17 +164,16 @@ def parse_all_datasets(data_dir="data"):
         if nvd_risks:
             all_risks["nvd_cve"] = nvd_risks
     
-    # Fallback data to ensure additional controls
-    if not all_risks or sum(len(risks) for risks in all_risks.values()) < 10:
-        logging.warning("Limited or no valid risk data parsed, adding fallback data")
-        all_risks["fallback"] = [
-            {"mitigating_controls": ["SI-2"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": ""},  # Vulnerability remediation
-            {"mitigating_controls": ["IA-5"], "exploitation_score": 7.0, "impact_score": 7.0, "cwe": ""},  # Credential abuse
-            {"mitigating_controls": ["AT-2"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Phishing training
-            {"mitigating_controls": ["SC-8"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Secure communications
-            {"mitigating_controls": ["CM-6"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""}   # Configuration settings
-        ]
-        logging.info("Added fallback risks for SI-2, IA-5, AT-2, SC-8, CM-6")
+    # Always include fallback data
+    logging.info("Adding fallback risks for additional control coverage")
+    all_risks.setdefault("fallback", []).extend([
+        {"mitigating_controls": ["SI-2"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": ""},  # Vulnerability remediation
+        {"mitigating_controls": ["IA-5"], "exploitation_score": 7.0, "impact_score": 7.0, "cwe": ""},  # Credential abuse
+        {"mitigating_controls": ["AT-2"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Phishing training
+        {"mitigating_controls": ["SC-8"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Secure communications
+        {"mitigating_controls": ["CM-6"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""}   # Configuration settings
+    ])
+    logging.info("Added fallback risks for SI-2, IA-5, AT-2, SC-8, CM-6")
     
     logging.info(f"Parsed risks from {csv_count} CSVs and NVD data: {sum(len(risks) for risks in all_risks.values())} total risks")
     return all_risks
