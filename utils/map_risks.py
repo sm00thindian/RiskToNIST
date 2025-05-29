@@ -60,12 +60,15 @@ def load_attack_mappings(data_dir="data"):
     """
     filepath = os.path.join(data_dir, "attack_mapping.json")
     if not os.path.exists(filepath):
-        logging.warning(f"{filepath} not found, skipping ATT&CK mappings.")
+        logging.error(f"{filepath} not found, no ATT&CK mappings loaded.")
         return {}
     try:
         with open(filepath, "r") as f:
             data = json.load(f)
         mappings = {}
+        if not isinstance(data.get("objects"), list):
+            logging.error(f"Invalid structure in {filepath}: 'objects' key missing or not a list")
+            return {}
         for item in data.get("objects", []):
             if item.get("type") == "relationship" and item.get("relationship_type") == "mitigates":
                 technique_id = item.get("source_ref", "").split("--")[0]
@@ -78,6 +81,9 @@ def load_attack_mappings(data_dir="data"):
         return mappings
     except json.JSONDecodeError as e:
         logging.error(f"Error parsing {filepath}: {e}")
+        return {}
+    except Exception as e:
+        logging.error(f"Unexpected error loading {filepath}: {e}")
         return {}
 
 def map_risks_to_controls(all_risks, data_dir="data"):
@@ -97,7 +103,7 @@ def map_risks_to_controls(all_risks, data_dir="data"):
         logging.info(f"Mapping {len(risks)} risks from {source_name}")
         for risk in risks:
             controls_to_map = risk["mitigating_controls"]
-            # Enhance NVD and CISA KEV with ATT&CK mappings
+            # Enhance NVD, CISA KEV, and fallback with ATT&CK mappings
             if source_name in ["nvd_cve", "cisa_kev", "fallback"] and attack_mappings:
                 cwe = risk.get("cwe", "")
                 if isinstance(cwe, str):
@@ -109,10 +115,10 @@ def map_risks_to_controls(all_risks, data_dir="data"):
                         if "T1566" in attack_mappings:
                             controls_to_map.extend(attack_mappings["T1566"])  # Phishing
                             logging.debug(f"Applied T1566 controls for CWE-79: {attack_mappings['T1566']}")
-                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-502", "CWE-78"]):
+                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-502", "CWE-78", "CWE-287"]):
                         if "T1078" in attack_mappings:
                             controls_to_map.extend(attack_mappings["T1078"])  # Valid Accounts
-                            logging.debug(f"Applied T1078 controls for CWE-94/288/502/78: {attack_mappings['T1078']}")
+                            logging.debug(f"Applied T1078 controls for CWE-94/288/502/78/287: {attack_mappings['T1078']}")
                     elif "CWE-416" in cwe:
                         if "T1203" in attack_mappings:
                             controls_to_map.extend(attack_mappings["T1203"])  # Exploitation for Client Execution
