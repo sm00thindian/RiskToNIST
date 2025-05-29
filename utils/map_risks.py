@@ -99,7 +99,6 @@ def map_risks_to_controls(all_risks, data_dir="data"):
             controls_to_map = risk["mitigating_controls"]
             # Enhance NVD CVEs with ATT&CK mappings
             if source_name == "nvd_cve" and attack_mappings:
-                # Placeholder: Apply all ATT&CK controls (real-world would need CVE-to-technique mapping)
                 for technique, mapped_controls in attack_mappings.items():
                     controls_to_map.extend(mapped_controls)
                     controls_to_map = list(set(controls_to_map))  # Remove duplicates
@@ -122,22 +121,31 @@ def map_risks_to_controls(all_risks, data_dir="data"):
     # Log controls with non-zero scores
     non_zero_controls = [cid for cid, data in controls.items() if data["max_exploitation"] > 0 or data["max_severity"] > 0]
     logging.info(f"Controls with non-zero scores: {len(non_zero_controls)}")
-    return controls
+    return controls, attack_mappings  # Return mappings for output
 
-def normalize_and_prioritize(controls):
-    """Calculate total scores and prioritize top 50 controls.
+def normalize_and_prioritize(controls, weights):
+    """Calculate total scores and prioritize top 50 controls using configurable weights.
 
     Args:
         controls (dict): Dictionary of controls with risk scores.
+        weights (dict): Dictionary with 'exploitation', 'severity', and 'applicability' weights.
 
     Returns:
         list: Top 50 controls sorted by total score.
     """
+    # Validate weights
+    total_weight = sum(weights.values())
+    if abs(total_weight - 1.0) > 0.01:
+        logging.error(f"Weights sum to {total_weight}, must sum to 1.0")
+        raise ValueError("Weights must sum to 1.0")
+    
+    logging.info(f"Using weights: exploitation={weights['exploitation']}, severity={weights['severity']}, applicability={weights['applicability']}")
+    
     for control_id, control in controls.items():
         control["total_score"] = (
-            0.4 * control["max_exploitation"] +  # 40% Exploitation Frequency
-            0.4 * control["max_severity"] +      # 40% Severity/Impact
-            0.2 * control["applicability"]       # 20% Applicability
+            weights["exploitation"] * control["max_exploitation"] +
+            weights["severity"] * control["max_severity"] +
+            weights["applicability"] * control["applicability"]
         )
         logging.debug(f"Control {control_id}: total_score={control['total_score']}")
     prioritized = sorted(controls.items(), key=lambda x: x[1]["total_score"], reverse=True)[:50]
