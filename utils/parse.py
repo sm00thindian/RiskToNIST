@@ -26,22 +26,21 @@ def parse_csv(csv_path):
                 if not cve_id:
                     logging.warning(f"Skipping row in {csv_path} with missing cveID")
                     continue
-                controls = ["SI-2"]  # Flaw Remediation for exploited CVEs
-                if "CWE-22" in cwe:
-                    controls.extend(["SC-7"])  # Path Traversal
-                elif "CWE-79" in cwe:
-                    controls.extend(["AT-2"])  # XSS
-                elif "CWE-94" in cwe or "CWE-288" in cwe:
-                    controls.extend(["AC-2"])  # Code Injection, Auth Bypass
-                elif "CWE-502" in cwe:
-                    controls.extend(["SI-10"])  # Deserialization
-                elif "CWE-78" in cwe:
-                    controls.extend(["SI-10"])  # Command Injection
+                controls = ["SI-2"]  # Default for exploited CVEs
+                if isinstance(cwe, str):  # Handle non-NaN strings
+                    if "CWE-22" in cwe:
+                        controls.extend(["SC-7"])  # Path Traversal
+                    elif "CWE-79" in cwe:
+                        controls.extend(["AT-2"])  # XSS
+                    elif "CWE-94" in cwe or "CWE-288" in cwe:
+                        controls.extend(["AC-2"])  # Code Injection, Auth Bypass
+                    elif "CWE-502" in cwe or "CWE-78" in cwe:
+                        controls.extend(["SI-10"])  # Deserialization, Command Injection
                 risks.append({
                     "mitigating_controls": controls,
                     "exploitation_score": 10.0,
                     "impact_score": 10.0,
-                    "cwe": cwe
+                    "cwe": cwe if isinstance(cwe, str) else ""
                 })
             else:
                 controls = row.get("Mitigating Controls", "").split(",")
@@ -114,6 +113,10 @@ def parse_nvd(data_dir):
             controls.extend(["SC-7"])  # Path Traversal
         elif cwe == "CWE-79":
             controls.extend(["AT-2"])  # XSS
+        elif cwe == "CWE-94" or cwe == "CWE-288":
+            controls.extend(["AC-2"])  # Code Injection, Auth Bypass
+        elif cwe == "CWE-502" or cwe == "CWE-78":
+            controls.extend(["SI-10"])  # Deserialization, Command Injection
         if cvss_v31 and len(cvss_v31) > 0:
             cvss_data = cvss_v31[0].get("cvssData", {})
             score = cvss_data.get("baseScore", 0.0)
