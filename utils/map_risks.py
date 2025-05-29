@@ -133,4 +133,66 @@ def map_risks_to_controls(all_risks, data_dir="data"):
                         controls_to_map.extend(attack_mappings["T1078"])  # Valid Accounts
                         logging.debug(f"Applied T1078 controls for CWE-94/288/502/78/287: {attack_mappings['T1078']}")
                     elif "CWE-416" in cwe and "T1203" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1203"])  # Exploitation
+                        controls_to_map.extend(attack_mappings["T1203"])  # Exploitation for Client Execution
+                        logging.debug(f"Applied T1203 controls for CWE-416: {attack_mappings.get('T1203', [])}")
+                    elif "CWE-20" in cwe and "T1210" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1210"])  # Exploitation of Remote Services
+                        logging.debug(f"Applied T1210 controls for CWE-20: {attack_mappings.get('T1210', [])}")
+                    elif any(cwe_id in cwe for cwe_id in ["CWE-400", "CWE-770"]) and "T1499" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1499"])  # Endpoint Denial of Service
+                        logging.debug(f"Applied T1499 controls for CWE-400/770: {attack_mappings.get('T1499', [])}")
+                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-287"]) and "T1530" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1530"])  # Cloud Storage
+                        logging.debug(f"Applied T1530 controls for CWE-94/288/287: {attack_mappings.get('T1530', [])}")
+                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-287"]) and "T1072" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1072"])  # Software Deployment Tools
+                        logging.debug(f"Applied T1072 controls for CWE-94/288/287: {attack_mappings.get('T1072', [])}")
+                controls_to_map = list(set(controls_to_map))  # Remove duplicates
+            
+            for control_id in controls_to_map:
+                control_id = normalize_control_id(control_id)
+                if control_id in controls:
+                    controls[control_id]["max_exploitation"] = max(
+                        controls[control_id]["max_exploitation"],
+                        risk["exploitation_score"]
+                    )
+                    controls[control_id]["max_severity"] = max(
+                        controls[control_id]["max_severity"],
+                        risk["impact_score"]
+                    )
+                    logging.debug(f"Updated {control_id}: max_exploitation={controls[control_id]['max_exploitation']}, max_severity={controls[control_id]['max_severity']}")
+                else:
+                    logging.warning(f"Control {control_id} not found in NIST catalog")
+    
+    # Log controls with non-zero scores
+    non_zero_controls = [cid for cid, data in controls.items() if data["max_exploitation"] > 0 or data["max_severity"] > 0]
+    logging.info(f"Controls with non-zero scores: {len(non_zero_controls)} ({', '.join(non_zero_controls)})")
+    return controls, attack_mappings
+
+def normalize_and_prioritize(controls, weights):
+    """Calculate total scores and prioritize all controls by total score descending.
+
+    Args:
+        controls (dict): Dictionary of controls with risk scores.
+        weights (dict): Dictionary with 'exploitation', 'severity', and 'applicability' weights.
+
+    Returns:
+        list: All controls sorted by total score in descending order.
+    """
+    total_weight = sum(weights.values())
+    if abs(total_weight - 1.0) > 0.01:
+        logging.error(f"Weights sum to {total_weight}, must sum to 1.0")
+        raise ValueError("Weights must sum to 1.0")
+    
+    logging.info(f"Using weights: exploitation={weights['exploitation']}, severity={weights['severity']}, applicability={weights['applicability']}")
+    
+    for control_id, control in controls.items():
+        control["total_score"] = (
+            weights["exploitation"] * control["max_exploitation"] +
+            weights["severity"] * control["max_severity"] +
+            weights["applicability"] * control["applicability"]
+        )
+        logging.debug(f"Control {control_id}: total_score={control['total_score']}")
+    prioritized = sorted(controls.items(), key=lambda x: x[1]["total_score"], reverse=True)
+    logging.info(f"Prioritized {len(prioritized)} controls")
+    return prioritized
