@@ -50,7 +50,7 @@ def load_nist_controls():
         return {}
 
 def load_attack_mappings(data_dir="data"):
-    """Load MITRE ATT&CK to NIST 800-53 mappings.
+    """Load MITRE ATT&CK to NIST 800-53 mappings from mapping_objects structure.
 
     Args:
         data_dir (str): Directory containing the attack_mapping.json file.
@@ -65,18 +65,19 @@ def load_attack_mappings(data_dir="data"):
     try:
         with open(filepath, "r") as f:
             data = json.load(f)
+        logging.debug(f"Contents of {filepath}: {json.dumps(data, indent=2)[:1000]}...")
         mappings = {}
-        if not isinstance(data.get("objects"), list):
-            logging.error(f"Invalid structure in {filepath}: 'objects' key missing or not a list")
+        if not isinstance(data.get("mapping_objects"), list):
+            logging.error(f"Invalid structure in {filepath}: 'mapping_objects' key missing or not a list")
             return {}
-        for item in data.get("objects", []):
-            if item.get("type") == "relationship" and item.get("relationship_type") == "mitigates":
-                technique_id = item.get("source_ref", "").split("--")[0]
-                control_id = item.get("target_ref", "").split("--")[0]
-                if technique_id.startswith("attack-pattern") and control_id.startswith("control"):
-                    technique = item.get("external_references", [{}])[0].get("external_id", "")
-                    if technique:
-                        mappings.setdefault(technique, []).append(control_id.replace("control-", "").upper())
+        for item in data.get("mapping_objects", []):
+            if not isinstance(item, dict):
+                logging.warning(f"Skipping invalid item in {filepath}: {item}")
+                continue
+            if item.get("mapping_type") == "mitigates" and item.get("capability_id") and item.get("attack_object_id"):
+                technique = item.get("attack_object_id")
+                control_id = item.get("capability_id").upper()
+                mappings.setdefault(technique, []).append(control_id)
         logging.info(f"Loaded {len(mappings)} ATT&CK technique mappings")
         return mappings
     except json.JSONDecodeError as e:
@@ -103,26 +104,34 @@ def map_risks_to_controls(all_risks, data_dir="data"):
         logging.info(f"Mapping {len(risks)} risks from {source_name}")
         for risk in risks:
             controls_to_map = risk["mitigating_controls"]
-            # Enhance NVD, CISA KEV, and fallback with ATT&CK mappings
             if source_name in ["nvd_cve", "cisa_kev", "fallback"] and attack_mappings:
                 cwe = risk.get("cwe", "")
                 if isinstance(cwe, str):
-                    if "CWE-22" in cwe:
-                        if "T1190" in attack_mappings:
-                            controls_to_map.extend(attack_mappings["T1190"])  # Exploit Public-Facing App
-                            logging.debug(f"Applied T1190 controls for CWE-22: {attack_mappings['T1190']}")
-                    elif "CWE-79" in cwe:
-                        if "T1566" in attack_mappings:
-                            controls_to_map.extend(attack_mappings["T1566"])  # Phishing
-                            logging.debug(f"Applied T1566 controls for CWE-79: {attack_mappings['T1566']}")
-                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-502", "CWE-78", "CWE-287"]):
-                        if "T1078" in attack_mappings:
-                            controls_to_map.extend(attack_mappings["T1078"])  # Valid Accounts
-                            logging.debug(f"Applied T1078 controls for CWE-94/288/502/78/287: {attack_mappings['T1078']}")
-                    elif "CWE-416" in cwe:
-                        if "T1203" in attack_mappings:
-                            controls_to_map.extend(attack_mappings["T1203"])  # Exploitation for Client Execution
-                            logging.debug(f"Applied T1203 controls for CWE-416: {attack_mappings.get('T1203', [])}")
+                    # High-impact techniques from navigation layer
+                    if "CWE-22" in cwe and "T1190" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1190"])  # Exploit Public-Facing App
+                        logging.debug(f"Applied T1190 controls for CWE-22: {attack_mappings['T1190']}")
+                    elif "CWE-79" in cwe and "T1566" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1566"])  # Phishing
+                        logging.debug(f"Applied T1566 controls for CWE-79: {attack_mappings['T1566']}")
+                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-502", "CWE-78", "CWE-287"]) and "T1078" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1078"])  # Valid Accounts
+                        logging.debug(f"Applied T1078 controls for CWE-94/288/502/78/287: {attack_mappings['T1078']}")
+                    elif "CWE-416" in cwe and "T1203" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1203"])  # Exploitation for Client Execution
+                        logging.debug(f"Applied T1203 controls for CWE-416: {attack_mappings['T1203']}")
+                    elif "CWE-20" in cwe and "T1210" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1210"])  # Exploitation of Remote Services
+                        logging.debug(f"Applied T1210 controls for CWE-20: {attack_mappings['T1210']}")
+                    elif any(cwe_id in cwe for cwe_id in ["CWE-400", "CWE-770"]) and "T1499" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1499"])  # Endpoint Denial of Service
+                        logging.debug(f"Applied T1499 controls for CWE-400/770: {attack_mappings['T1499']}")
+                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-287"]) and "T1530" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1530"])  # Cloud Storage
+                        logging.debug(f"Applied T1530 controls for CWE-94/288/287: {attack_mappings['T1530']}")
+                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-287"]) and "T1072" in attack_mappings:
+                        controls_to_map.extend(attack_mappings["T1072"])  # Software Deployment Tools
+                        logging.debug(f"Applied T1072 controls for CWE-94/288/287: {attack_mappings['T1072']}")
                 controls_to_map = list(set(controls_to_map))  # Remove duplicates
             
             for control_id in controls_to_map:
