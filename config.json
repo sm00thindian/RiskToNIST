@@ -43,7 +43,13 @@
     },
     {
       "name": "ATTACK Mapping",
-      "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-14.1/nist_800_53-rev5/enterprise/nist_800_53-rev5_attack-14.1-enterprise_json.json",
+      "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-16.1/nist_800_53-rev5/enterprise/nist_800_53-rev5_attack-16.1-enterprise_json.json",
+      "type": "json",
+      "enabled": true
+    },
+    {
+      "name": "KEV ATTACK Mapping",
+      "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/kev/attack-15.1/kev-02.13.2025/enterprise/kev-02.13.2025_attack-15.1-enterprise_json.json",
       "type": "json",
       "enabled": true
     }
