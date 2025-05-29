@@ -3,6 +3,9 @@ import os
 import requests
 import logging
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 def load_nist_controls():
     """Load NIST SP 800-53 controls from OSCAL JSON, including family info.
 
@@ -31,7 +34,7 @@ def load_nist_controls():
             family_id = group["id"]
             family_title = group["title"]
             for control in group["controls"]:
-                control_id = control["id"]
+                control_id = control["id"].upper()  # Normalize to uppercase
                 controls[control_id] = {
                     "title": control["title"],
                     "family_id": family_id,
@@ -40,6 +43,7 @@ def load_nist_controls():
                     "max_exploitation": 0.0,
                     "max_severity": 0.0
                 }
+        logging.info(f"Loaded {len(controls)} NIST controls")
         return controls
     except (KeyError, json.JSONDecodeError) as e:
         logging.error(f"Invalid OSCAL structure or JSON: {e}")
@@ -56,7 +60,7 @@ def load_attack_mappings(data_dir="data"):
     """
     filepath = os.path.join(data_dir, "attack_mapping.json")
     if not os.path.exists(filepath):
-        print(f"Warning: {filepath} not found, skipping ATT&CK mappings.")
+        logging.warning(f"{filepath} not found, skipping ATT&CK mappings.")
         return {}
     try:
         with open(filepath, "r") as f:
@@ -69,10 +73,11 @@ def load_attack_mappings(data_dir="data"):
                 if technique_id.startswith("attack-pattern") and control_id.startswith("control"):
                     technique = item.get("external_references", [{}])[0].get("external_id", "")
                     if technique:
-                        mappings.setdefault(technique, []).append(control_id.replace("control-", ""))
+                        mappings.setdefault(technique, []).append(control_id.replace("control-", "").upper())
+        logging.info(f"Loaded {len(mappings)} ATT&CK technique mappings")
         return mappings
     except json.JSONDecodeError as e:
-        print(f"Error parsing {filepath}: {e}")
+        logging.error(f"Error parsing {filepath}: {e}")
         return {}
 
 def map_risks_to_controls(all_risks, data_dir="data"):
@@ -89,17 +94,18 @@ def map_risks_to_controls(all_risks, data_dir="data"):
     attack_mappings = load_attack_mappings(data_dir)
     
     for source_name, risks in all_risks.items():
+        logging.info(f"Mapping {len(risks)} risks from {source_name}")
         for risk in risks:
             controls_to_map = risk["mitigating_controls"]
-            # Enhance with ATT&CK mappings for NVD CVEs
+            # Enhance NVD CVEs with ATT&CK mappings
             if source_name == "nvd_cve" and attack_mappings:
-                # Placeholder: Assume CVE descriptions could map to techniques
-                # For simplicity, assign a default technique score if no direct mapping
+                # Placeholder: Apply all ATT&CK controls (real-world would need CVE-to-technique mapping)
                 for technique, mapped_controls in attack_mappings.items():
                     controls_to_map.extend(mapped_controls)
                     controls_to_map = list(set(controls_to_map))  # Remove duplicates
             
             for control_id in controls_to_map:
+                control_id = control_id.upper()  # Ensure uppercase
                 if control_id in controls:
                     controls[control_id]["max_exploitation"] = max(
                         controls[control_id]["max_exploitation"],
@@ -109,7 +115,13 @@ def map_risks_to_controls(all_risks, data_dir="data"):
                         controls[control_id]["max_severity"],
                         risk["impact_score"]
                     )
+                    logging.debug(f"Updated {control_id}: max_exploitation={controls[control_id]['max_exploitation']}, max_severity={controls[control_id]['max_severity']}")
+                else:
+                    logging.warning(f"Control {control_id} not found in NIST catalog")
     
+    # Log controls with non-zero scores
+    non_zero_controls = [cid for cid, data in controls.items() if data["max_exploitation"] > 0 or data["max_severity"] > 0]
+    logging.info(f"Controls with non-zero scores: {len(non_zero_controls)}")
     return controls
 
 def normalize_and_prioritize(controls):
@@ -121,10 +133,13 @@ def normalize_and_prioritize(controls):
     Returns:
         list: Top 50 controls sorted by total score.
     """
-    for control in controls.values():
+    for control_id, control in controls.items():
         control["total_score"] = (
             0.4 * control["max_exploitation"] +  # 40% Exploitation Frequency
             0.4 * control["max_severity"] +      # 40% Severity/Impact
             0.2 * control["applicability"]       # 20% Applicability
         )
-    return sorted(controls.items(), key=lambda x: x[1]["total_score"], reverse=True)[:50]
+        logging.debug(f"Control {control_id}: total_score={control['total_score']}")
+    prioritized = sorted(controls.items(), key=lambda x: x[1]["total_score"], reverse=True)[:50]
+    logging.info(f"Prioritized {len(prioritized)} controls")
+    return prioritized
