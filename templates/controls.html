@@ -1,30 +1,60 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>RiskToNIST Control Prioritization</title>
+    <title>NIST 800-53 Control Prioritization</title>
     <style>
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid black; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
     </style>
 </head>
 <body>
     <h1>NIST 800-53 Control Prioritization Based on Risk</h1>
+    <p>The following table lists the top 50 NIST 800-53 controls prioritized based on risk, sorted by total score in descending order.</p>
+    <p><strong>Column Descriptions:</strong></p>
+    <ul>
+        <li><strong>Control ID:</strong> The unique identifier for the control.</li>
+        <li><strong>Control Name:</strong> The name of the control.</li>
+        <li><strong>Control Family:</strong> The family to which the control belongs.</li>
+        <li><strong>Max Exploitation:</strong> The highest exploitation score from associated risks.</li>
+        <li><strong>Max Severity:</strong> The highest severity score from associated risks.</li>
+        <li><strong>Applicability:</strong> A default score indicating the control's broad applicability.</li>
+        <li><strong>Total Score:</strong> The weighted sum of the above scores.</li>
+    </ul>
     <table>
-        <tr>
-            <th>Control ID</th>
-            <th>Name</th>
-            <th>Risks</th>
-            <th>Priority Score</th>
-        </tr>
-        {% for control in controls %}
-        <tr>
-            <td>{{ control.id }}</td>
-            <td>{{ control.name }}</td>
-            <td>{{ control.risks | join(', ') }}</td>
-            <td>{{ "%.2f" | format(control.score) }}</td>
-        </tr>
-        {% endfor %}
+        <thead>
+            <tr>
+                <th>Control ID</th>
+                <th>Control Name</th>
+                <th>Control Family</th>
+                <th>Max Exploitation</th>
+                <th>Max Severity</th>
+                <th>Applicability</th>
+                <th>Total Score</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for control in controls %}
+            <tr>
+                <td>{{ control.id }}</td>
+                <td>{{ control.name }}</td>
+                <td>{{ control.family }}</td>
+                <td>{{ "%.2f" | format(control.max_exploitation) }}</td>
+                <td>{{ "%.2f" | format(control.max_severity) }}</td>
+                <td>{{ "%.2f" | format(control.applicability) }}</td>
+                <td>{{ "%.2f" | format(control.total_score) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
     </table>
 </body>
 </html>
