@@ -1,82 +1,108 @@
+import logging
 import os
 import requests
-import logging
 import time
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def download_file(url, output_path, retries=3, delay=5):
-    """Download a file from a URL to the specified path with retries.
+def download_file(url, output_path):
+    """Download a file from a URL and save it to the specified path.
 
     Args:
-        url (str): URL to download from.
-        output_path (str): Local path to save the file.
-        retries (int): Number of retry attempts.
-        delay (int): Delay between retries in seconds.
-
-    Returns:
-        bool: True if download succeeded, False otherwise.
+        url (str): URL of the file to download.
+        output_path (str): Path to save the downloaded file.
     """
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    
-    for attempt in range(retries):
-        try:
-            response = requests.get(url, timeout=30, stream=True)
-            response.raise_for_status()
-            
-            with open(output_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            
-            logging.info(f"Successfully downloaded {url} to {output_path}")
-            return True
-        
-        except requests.exceptions.RequestException as e:
-            logging.warning(f"Attempt {attempt + 1}/{retries} failed for {url}: {e}")
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                logging.error(f"Failed to download {url} after {retries} attempts")
-                return False
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        logging.info(f"Successfully downloaded {url} to {output_path}")
+    except requests.RequestException as e:
+        logging.error(f"Failed to download {url}: {e}")
 
-def download_datasets(config, data_dir="data"):
+def download_nvd_api(api_url, output_path, api_key):
+    """Download CVE data from the NVD API and save as JSON.
+
+    Args:
+        api_url (str): NVD API base URL.
+        output_path (str): Path to save the JSON file.
+        api_key (str): NVD API key.
+    """
+    try:
+        headers = {"apiKey": api_key} if api_key else {}
+        params = {
+            "pubStartDate": "2025-01-01T00:00:00:000 UTC-05:00",
+            "pubEndDate": "2025-12-31T23:59:59:999 UTC-05:00",
+            "resultsPerPage": 2000  # Max per NVD API
+        }
+        all_items = []
+        start_index = 0
+
+        while True:
+            params["startIndex"] = start_index
+            response = requests.get(api_url, headers=headers, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            items = data.get("vulnerabilities", [])
+            all_items.extend(items)
+            total_results = data.get("totalResults", 0)
+            logging.debug(f"Fetched {len(items)} CVEs, total so far: {len(all_items)}/{total_results}")
+
+            if len(all_items) >= total_results or not items:
+                break
+            start_index += params["resultsPerPage"]
+            time.sleep(6)  # Respect NVD API rate limit (10 requests/min with key)
+
+        # Format to match NVD JSON feed structure
+        nvd_data = {
+            "CVE_Items": [item.get("cve", {}) for item in all_items]
+        }
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "w") as f:
+            json.dump(nvd_data, f)
+        logging.info(f"Successfully downloaded {len(all_items)} CVEs from NVD API to {output_path}")
+    except requests.RequestException as e:
+        logging.error(f"Failed to download from NVD API {api_url}: {e}")
+    except Exception as e:
+        logging.error(f"Error processing NVD API data: {e}")
+
+def download_datasets(config, data_dir):
     """Download datasets specified in the configuration.
 
     Args:
         config (dict): Configuration dictionary with sources.
         data_dir (str): Directory to save downloaded files.
     """
-    os.makedirs(data_dir, exist_ok=True)
-    
-    for source in config.get("sources", []):
-        if not source.get("enabled", False):
-            logging.info(f"Skipping disabled source: {source['name']}")
-            continue
-        
-        url = source.get("url")
-        source_name = source.get("name")
-        source_type = source.get("type")
-        
-        if source_type == "csv":
-            output_path = os.path.join(data_dir, f"{source_name.lower().replace(' ', '_')}.csv")
-        elif source_type == "json":
-            output_path = os.path.join(data_dir, f"{source_name.lower().replace(' ', '_')}.json")
-        else:
-            logging.warning(f"Unsupported source type {source_type} for {source_name}")
-            continue
-        
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            logging.info(f"{output_path} already exists, skipping download.")
-            continue
-        
-        logging.info(f"Downloading {source_name} from {url}")
-        if not download_file(url, output_path):
-            logging.error(f"Failed to download {source_name}")
+    api_key = os.getenv("NVD_API_KEY")
+    if not api_key:
+        logging.warning("NVD_API_KEY environment variable not set. NVD API downloads may fail.")
 
-if __name__ == "__main__":
-    # Example usage
-    with open("config.json", "r") as f:
-        config = json.load(f)
-    download_datasets(config)
+    for source in config.get("sources", []):
+        name = source.get("name", "")
+        url = source.get("url", "")
+        source_type = source.get("type", "")
+        output_file = source.get("output", "")
+        
+        if not all([name, url, source_type, output_file]):
+            logging.warning(f"Skipping source {name}: missing required fields")
+            continue
+        
+        output_path = os.path.join(data_dir, output_file)
+        
+        if source_type == "file":
+            logging.debug(f"Downloading {name} from {url}")
+            download_file(url, output_path)
+        elif source_type == "api":
+            if name == "NVD CVE":
+                logging.debug(f"Fetching {name} from NVD API {url}")
+                download_nvd_api(url, output_path, api_key)
+            else:
+                logging.warning(f"API source type not supported for {name}. Only NVD CVE API is implemented.")
+        else:
+            logging.warning(f"Unsupported source type '{source_type}' for {name}. Expected 'file' or 'api'. Skipping download.")
