@@ -5,7 +5,7 @@ import os
 from utils.download import download_datasets
 from utils.parse import parse_all_datasets
 from utils.map_risks import map_risks_to_controls, normalize_and_prioritize
-from utils.output import write_outputs
+from utils.output import write_outputs  # Corrected import
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
