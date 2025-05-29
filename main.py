@@ -10,6 +10,7 @@ import sys
 import time
 import threading
 import argparse
+import json
 from utils.download import download_datasets
 from utils.parse import parse_all_datasets
 from utils.map_risks import map_risks_to_controls, normalize_and_prioritize, load_attack_mappings
@@ -45,9 +46,18 @@ def main():
     os.makedirs("outputs", exist_ok=True)
     os.makedirs("templates", exist_ok=True)
 
-    # Verify config file exists
-    if not os.path.exists(args.config):
-        print(f"Error: Configuration file {args.config} not found.")
+    # Load config file
+    try:
+        with open(args.config, "r") as f:
+            config = json.load(f)
+    except Exception as e:
+        print(f"Error: Failed to read {args.config}: {e}")
+        sys.exit(1)
+
+    # Extract weights
+    weights = config.get("weights", {})
+    if not weights or not all(key in weights for key in ["exploitation", "severity", "applicability"]):
+        print("Error: Config file missing valid weights section")
         sys.exit(1)
 
     # Download datasets with progress wheel
@@ -80,9 +90,8 @@ def main():
     # Map risks to NIST 800-53 controls and prioritize
     print("Mapping risks to controls and prioritizing...")
     try:
-        attack_mappings = load_attack_mappings(data_dir=args.data_dir)
-        controls = map_risks_to_controls(all_risks, data_dir=args.data_dir)
-        prioritized_controls = normalize_and_prioritize(controls)
+        controls, attack_mappings = map_risks_to_controls(all_risks, data_dir=args.data_dir)
+        prioritized_controls = normalize_and_prioritize(controls, weights)
     except Exception as e:
         print(f"Error during mapping or prioritization: {e}")
         sys.exit(1)
