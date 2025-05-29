@@ -1,269 +1,184 @@
-import pandas as pd
 import json
-import os
 import logging
+import os
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def normalize_control_id(control_id):
-    """Normalize control ID by removing leading zeros from the numeric part.
+def parse_cisa_kev(file_path):
+    """Parse CISA KEV CSV file and return a list of risks.
 
     Args:
-        control_id (str): The control ID to normalize (e.g., 'AC-02', 'SI-2').
+        file_path (str): Path to the CISA KEV CSV file.
 
     Returns:
-        str: Normalized control ID (e.g., 'AC-2', 'SI-2').
+        list: List of risk dictionaries.
     """
-    if '-' in control_id:
-        family, num = control_id.split('-', 1)
-        num = num.lstrip('0') or '0'
-        return f"{family.upper()}-{num}"
-    return control_id.upper()
-
-def parse_csv(csv_path):
-    """Parse a single CSV to extract risks, mitigating controls, and scores.
-
-    Args:
-        csv_path (str): Path to the CSV file.
-
-    Returns:
-        list: List of dictionaries with risk data.
-    """
+    import pandas as pd
     try:
-        df = pd.read_csv(csv_path)
+        logging.debug(f"Attempting to parse CISA KEV file: {file_path}")
+        df = pd.read_csv(file_path)
+        logging.debug(f"Successfully loaded CISA KEV with {len(df)} entries")
         risks = []
-        source_name = os.path.basename(csv_path).replace(".csv", "")
         for _, row in df.iterrows():
-            if source_name == "cisa_kev":
-                cve_id = row.get("cveID", "")
-                cwe = row.get("cwes", "")
-                if not cve_id:
-                    logging.warning(f"Skipping row in {csv_path} with missing cveID")
-                    continue
-                controls = ["SI-2"]  # Flaw Remediation
-                if isinstance(cwe, str):
-                    if "CWE-22" in cwe:
-                        controls.extend(["SC-7"])  # Path Traversal
-                    elif "CWE-79" in cwe:
-                        controls.extend(["AT-2"])  # XSS
-                    elif "CWE-94" in cwe or "CWE-288" in cwe:
-                        controls.extend(["AC-2"])  # Code Injection, Auth Bypass
-                    elif "CWE-502" in cwe or "CWE-78" in cwe:
-                        controls.extend(["SI-10"])  # Deserialization, Command Injection
-                    elif "CWE-416" in cwe:
-                        controls.extend(["SI-16"])  # Use-After-Free
-                    elif "CWE-287" in cwe:
-                        controls.extend(["IA-2"])  # Authentication Issues
-                    elif "CWE-20" in cwe:
-                        controls.extend(["SI-7"])  # Improper Input Validation
-                    elif "CWE-400" in cwe or "CWE-770" in cwe:
-                        controls.extend(["SC-5"])  # Resource Exhaustion
-                    elif "CWE-269" in cwe:
-                        controls.extend(["SI-7"])  # Privilege Management
-                risks.append({
-                    "mitigating_controls": [normalize_control_id(c) for c in controls],
-                    "exploitation_score": 10.0,
-                    "impact_score": 10.0,
-                    "cwe": cwe if isinstance(cwe, str) else "",
-                    "cve_id": cve_id
-                })
-            else:
-                controls = row.get("Mitigating Controls", "").split(",")
-                controls = [normalize_control_id(ctrl.strip()) for ctrl in controls if ctrl.strip()]
-                exploitation_score = float(row.get("Exploitation Score", 0.0))
-                impact_score = float(row.get("Impact Score", 0.0))
-                risks.append({
-                    "mitigating_controls": controls,
-                    "exploitation_score": exploitation_score,
-                    "impact_score": impact_score,
-                    "cwe": ""
-                })
-        logging.info(f"Parsed {len(risks)} risks from {csv_path} with controls {[r['mitigating_controls'] for r in risks[:5]]}")
+            cve_id = row.get("cveID", "")
+            if not cve_id:
+                continue
+            cwe_id = ""  # CISA KEV does not provide CWE
+            risks.append({
+                "mitigating_controls": ["SI-2", "RA-5", "SC-7"],  # Default controls
+                "exploitation_score": 10.0,  # High score for known exploited
+                "impact_score": 10.0,
+                "cwe": cwe_id,
+                "cve_id": cve_id,
+                "risk_context": f"CISA KEV: {row.get('vulnerabilityName', '')}"
+            })
+        logging.info(f"Parsed {len(risks)} risks from {file_path}")
         return risks
     except Exception as e:
-        logging.error(f"Error parsing {csv_path}: {e}")
+        logging.error(f"Failed to parse CISA KEV file {file_path}: {e}")
         return []
 
-def parse_nvd(data_dir):
-    """Parse NVD JSON files to extract CVE IDs and CVSS scores.
+def parse_nvd_cve(file_path):
+    """Parse NVD CVE JSON file and return a list of risks.
 
     Args:
-        data_dir (str): Directory containing NVD JSON files.
+        file_path (str): Path to the NVD CVE JSON file.
 
     Returns:
-        list: List of dictionaries with CVE data.
-    """
-    paths = [
-        os.path.join(data_dir, "nvdcve-1.1-2025.json"),
-        os.path.join(data_dir, "nvdcve-1.1-recent.json"),
-        os.path.join(data_dir, "nvdcve-1.1-modified.json")
-    ]
-    cve_dict = {}
-    for path in paths:
-        if not os.path.exists(path):
-            logging.warning(f"{path} not found, skipping.")
-            continue
-        try:
-            with open(path, "r") as f:
-                data = json.load(f)
-            cve_items = data.get("CVE_Items", [])
-            logging.info(f"Found {len(cve_items)} items in {path}")
-            for item in cve_items:
-                cve = item.get("cve", {})
-                cve_id = cve.get("id")
-                if cve_id:
-                    cve_dict[cve_id] = item
-                else:
-                    logging.warning(f"Skipping item in {path} with missing cve.id")
-        except json.JSONDecodeError as e:
-            logging.error(f"Failed to parse {path}: {e}")
-            continue
-    
-    risks = []
-    for item in cve_dict.values():
-        cve = item.get("cve", {})
-        cve_id = cve.get("id")
-        if not cve_id:
-            logging.warning("Skipping item with missing cve.id")
-            continue
-        score = 0.0
-        metrics = cve.get("metrics", {})
-        cvss_v31 = metrics.get("cvssMetricV31", [])
-        controls = ["RA-5"]  # Vulnerability Scanning
-        weaknesses = cve.get("weaknesses", [{}])[0].get("description", [{}])
-        cwe = weaknesses[0].get("value", "") if weaknesses else ""
-        if cwe == "CWE-416":
-            controls.extend(["SI-2", "SI-16"])  # Use-After-Free
-        elif cwe == "CWE-22":
-            controls.extend(["SC-7"])  # Path Traversal
-        elif cwe == "CWE-79":
-            controls.extend(["AT-2"])  # XSS
-        elif cwe == "CWE-94" or cwe == "CWE-288":
-            controls.extend(["AC-2"])  # Code Injection, Auth Bypass
-        elif cwe == "CWE-502" or cwe == "CWE-78":
-            controls.extend(["SI-10"])  # Deserialization, Command Injection
-        elif cwe == "CWE-287":
-            controls.extend(["IA-2"])  # Authentication Issues
-        elif cwe == "CWE-20":
-            controls.extend(["SI-7"])  # Improper Input Validation
-        elif cwe == "CWE-400" or cwe == "CWE-770":
-            controls.extend(["SC-5"])  # Resource Exhaustion
-        elif cwe == "CWE-269":
-            controls.extend(["SI-7"])  # Privilege Management
-        if cvss_v31 and len(cvss_v31) > 0:
-            cvss_data = cvss_v31[0].get("cvssData", {})
-            score = cvss_data.get("baseScore", 0.0)
-            logging.debug(f"CVE {cve_id}: CVSS score {score}, controls {controls}, cwe {cwe}")
-        else:
-            logging.debug(f"CVE {cve_id}: No CVSS v3.1 score, defaulting to 0.0")
-        risks.append({
-            "mitigating_controls": [normalize_control_id(c) for c in controls],
-            "exploitation_score": score,
-            "impact_score": score,
-            "cwe": cwe,
-            "cve_id": cve_id
-        })
-    logging.info(f"Parsed {len(risks)} CVEs from NVD JSON files")
-    return risks
-
-def parse_kev_attack_mapping(json_path, attack_mappings):
-    """Parse KEV-to-ATT&CK mapping JSON and cross-reference with ATT&CK-to-NIST.
-
-    Args:
-        json_path (str): Path to the KEV ATT&CK mapping JSON file.
-        attack_mappings (dict): ATT&CK-to-NIST control mappings.
-
-    Returns:
-        list: List of risk dictionaries with controls and scores.
+        list: List of risk dictionaries.
     """
     try:
+        logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
+        with open(file_path, "r") as f:
+            data = json.load(f)
+        risks = []
+        for item in data.get("CVE_Items", []):
+            cve_id = item.get("cve", {}).get("CVE_data_meta", {}).get("ID", "")
+            if not cve_id:
+                continue
+            cwe_id = ""
+            for problem in item.get("cve", {}).get("problemtype", {}).get("problemtype_data", []):
+                for desc in problem.get("description", []):
+                    if desc.get("value", "").startswith("CWE-"):
+                        cwe_id = desc.get("value", "")
+                        break
+                if cwe_id:
+                    break
+            cvss_v3 = item.get("impact", {}).get("baseMetricV3", {}).get("cvssV3", {})
+            base_score = cvss_v3.get("baseScore", 0.0)
+            risks.append({
+                "mitigating_controls": ["SI-2", "RA-5"],  # Default controls
+                "exploitation_score": base_score,
+                "impact_score": base_score,
+                "cwe": cwe_id,
+                "cve_id": cve_id,
+                "risk_context": item.get("cve", {}).get("description", {}).get("description_data", [{}])[0].get("value", "")
+            })
+        logging.info(f"Parsed {len(risks)} risks from {file_path}")
+        return risks
+    except Exception as e:
+        logging.error(f"Failed to parse NVD CVE file {file_path}: {e}")
+        return []
+
+def parse_kev_attack_mapping(json_path, attack_mappings):
+    """Parse KEV to ATT&CK mapping JSON file and return a list of risks.
+
+    Args:
+        json_path (str): Path to the KEV to ATT&CK mapping JSON file.
+        attack_mappings (dict): Dictionary of ATT&CK to NIST control mappings.
+
+    Returns:
+        list: List of risk dictionaries.
+    """
+    try:
+        logging.debug(f"Attempting to parse KEV ATT&CK mapping file: {json_path}")
         with open(json_path, "r") as f:
             data = json.load(f)
         risks = []
-        if not isinstance(data.get("mapping_objects"), list):
-            logging.error(f"Invalid structure in {json_path}: 'mapping_objects' missing or not a list")
-            return []
-        
-        for item in data["mapping_objects"]:
-            if not isinstance(item, dict):
-                logging.warning(f"Skipping invalid item in {json_path}: {item}")
-                continue
-            cve_id = item.get("cve_id")
-            technique_id = item.get("attack_object_id")
+        capability_scores = {
+            "code_execution": 10.0,
+            "command_injection": 10.0,
+            "untrusted_data": 9.0,
+            "buffer_overflow": 9.0,
+            "use_after_free": 9.0,
+            "dir_traversal": 8.0,
+            "input_validation": 8.0,
+            "auth_bypass": 8.0,
+            "priv_escalation": 8.0,
+            "other": 7.0
+        }
+        for item in data.get("mapping_objects", []):
+            cve_id = item.get("capability_id", "")
+            technique_id = item.get("attack_object_id", "")
+            capability_group = item.get("capability_group", "other")
             if not cve_id or not technique_id:
-                logging.warning(f"Skipping item missing cve_id or attack_object_id: {item}")
                 continue
             controls = []
-            if technique_id in attack_mappings:
-                controls = [normalize_control_id(c) for c in attack_mappings[technique_id]]
-                logging.debug(f"Mapped {technique_id} to controls: {controls}")
-            else:
-                logging.debug(f"No NIST controls mapped for technique {technique_id}")
-                controls = ["SI-2"]  # Default for KEV vulnerabilities
+            for mapping in attack_mappings.get("mapping_objects", []):
+                if mapping.get("attack_object_id") == technique_id:
+                    controls.append(mapping.get("capability_id"))
+            if not controls:
+                logging.warning(f"No NIST controls mapped for technique {technique_id} in CVE {cve_id}")
+                controls = ["SI-2"]  # Fallback control
+            score = capability_scores.get(capability_group, 7.0)
             risks.append({
                 "mitigating_controls": controls,
-                "exploitation_score": 10.0,  # KEV vulnerabilities are high priority
-                "impact_score": 10.0,
+                "exploitation_score": score,
+                "impact_score": score,
                 "cwe": "",
-                "cve_id": cve_id
+                "cve_id": cve_id,
+                "risk_context": item.get("comments", "")
             })
-        logging.info(f"Parsed {len(risks)} risks from {json_path} with controls {[r['mitigating_controls'] for r in risks[:5]]}")
+        logging.info(f"Parsed {len(risks)} risks from {json_path}")
         return risks
-    except json.JSONDecodeError as e:
-        logging.error(f"Error parsing {json_path}: {e}")
-        return []
     except Exception as e:
-        logging.error(f"Unexpected error parsing {json_path}: {e}")
+        logging.error(f"Failed to parse KEV ATT&CK mapping file {json_path}: {e}")
         return []
 
-def parse_all_datasets(data_dir="data", attack_mappings=None):
-    """Parse all datasets (CSV, NVD JSON, KEV ATT&CK JSON) in the data directory.
+def parse_all_datasets(data_dir, attack_mappings):
+    """Parse all datasets and return a dictionary of risks by source.
 
     Args:
         data_dir (str): Directory containing data files.
-        attack_mappings (dict): ATT&CK-to-NIST control mappings for KEV cross-referencing.
+        attack_mappings (dict): Dictionary of ATT&CK to NIST control mappings.
 
     Returns:
-        dict: Dictionary mapping source names to lists of risks.
+        dict: Dictionary with source names as keys and lists of risks as values.
     """
     all_risks = {}
-    csv_count = 0
-    for filename in os.listdir(data_dir):
-        if filename.endswith(".csv"):
-            source_name = filename.replace(".csv", "")
-            csv_path = os.path.join(data_dir, filename)
-            risks = parse_csv(csv_path)
-            if risks:
-                all_risks[source_name] = risks
-                csv_count += 1
-        elif filename == "kev_attack_mapping.json":
-            risks = parse_kev_attack_mapping(os.path.join(data_dir, filename), attack_mappings or {})
-            if risks:
-                all_risks["kev_attack"] = risks
     
-    # Parse NVD data if present
-    if any(os.path.exists(os.path.join(data_dir, f)) for f in ["nvdcve-1.1-2025.json", "nvdcve-1.1-recent.json", "nvdcve-1.1-modified.json"]):
-        nvd_risks = parse_nvd(data_dir)
-        if nvd_risks:
-            all_risks["nvd_cve"] = nvd_risks
+    # Parse CISA KEV
+    cisa_kev_path = os.path.join(data_dir, "cisa_kev.csv")
+    if os.path.exists(cisa_kev_path):
+        all_risks["cisa_kev"] = parse_cisa_kev(cisa_kev_path)
     
-    # Always include fallback data
-    logging.info("Adding fallback risks for additional control coverage")
-    all_risks.setdefault("fallback", []).extend([
-        {"mitigating_controls": [normalize_control_id("SI-2")], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": ""},  # Vulnerability remediation
-        {"mitigating_controls": [normalize_control_id("IA-5")], "exploitation_score": 7.0, "impact_score": 7.0, "cwe": ""},  # Credential abuse
-        {"mitigating_controls": [normalize_control_id("AT-2")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Phishing training
-        {"mitigating_controls": [normalize_control_id("SC-8")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Secure communications
-        {"mitigating_controls": [normalize_control_id("CM-6")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Configuration settings
-        {"mitigating_controls": [normalize_control_id("SI-7")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Software Integrity
-        {"mitigating_controls": [normalize_control_id("SC-5")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Denial of Service Protection
-        {"mitigating_controls": [normalize_control_id("IA-2")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Authentication
-        {"mitigating_controls": [normalize_control_id("AC-3")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Access Enforcement
-        {"mitigating_controls": [normalize_control_id("AC-4")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Information Flow Enforcement
-        {"mitigating_controls": [normalize_control_id("AC-6")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""}   # Least Privilege
-    ])
-    logging.info("Added fallback risks for SI-2, IA-5, AT-2, SC-8, CM-6, SI-7, SC-5, IA-2, AC-3, AC-4, AC-6")
+    # Parse NVD CVE
+    for file_name in os.listdir(data_dir):
+        if file_name.startswith("nvdcve-1.1-") and file_name.endswith(".json"):
+            nvd_path = os.path.join(data_dir, file_name)
+            all_risks[f"nvd_{file_name}"] = parse_nvd_cve(nvd_path)
     
-    logging.info(f"Parsed risks from {csv_count} CSVs, NVD, and KEV ATT&CK data: {sum(len(risks) for risks in all_risks.values())} total risks")
+    # Parse KEV ATT&CK Mapping
+    kev_attack_path = os.path.join(data_dir, "kev_attack_mapping.json")
+    if os.path.exists(kev_attack_path):
+        all_risks["kev_attack"] = parse_kev_attack_mapping(kev_attack_path, attack_mappings)
+    
+    # Fallback data
+    fallback_risks = [
+        {"mitigating_controls": ["AC-2"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": "", "cve_id": "", "risk_context": "Default access control risk"},
+        {"mitigating_controls": ["AT-2"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": "", "cve_id": "", "risk_context": "Training deficiency risk"},
+        {"mitigating_controls": ["CM-6"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": "", "cve_id": "", "risk_context": "Configuration management risk"},
+        {"mitigating_controls": ["IA-2"], "exploitation_score": 7.0, "impact_score": 7.0, "cwe": "", "cwe_id": "", "risk_context": "Identification and authentication risk"},
+        {"mitigating_controls": ["IA-5"], "exploitation_score": 7.0, "impact_score": 7.0, "cwe": "", "cve_id": "", "risk_context": "Authentication management risk"},
+        {"mitigating_controls": ["RA-5"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": "", "cve_id": "", "risk_context": "Vulnerability scanning risk"},
+        {"mitigating_controls": ["SC-7"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": "", "cve_id": "", "risk_context": "Boundary protection risk"},
+        {"mitigating_controls": ["SC-8"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": "", "cve_id": "", "risk_context": "Transmission confidentiality risk"},
+        {"mitigating_controls": ["SI-2"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": "", "cve_id": "", "risk_context": "Flaw remediation risk"},
+        {"mitigating_controls": ["SI-10"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": "", "cve_id": "", "risk_context": "Input validation risk"},
+        {"mitigating_controls": ["SI-16"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": "", "cve_id": "", "risk_context": "Memory protection risk"}
+    ]
+    all_risks["fallback"] = fallback_risks
+    
     return all_risks
