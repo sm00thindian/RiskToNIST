@@ -6,6 +6,21 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
+def normalize_control_id(control_id):
+    """Normalize control ID by removing leading zeros from the numeric part.
+
+    Args:
+        control_id (str): The control ID to normalize (e.g., 'AC-02', 'SI-2').
+
+    Returns:
+        str: Normalized control ID (e.g., 'AC-2', 'SI-2').
+    """
+    if '-' in control_id:
+        family, num = control_id.split('-', 1)
+        num = num.lstrip('0') or '0'
+        return f"{family.upper()}-{num}"
+    return control_id.upper()
+
 def parse_csv(csv_path):
     """Parse a single CSV to extract risks, mitigating controls, and scores.
 
@@ -47,14 +62,15 @@ def parse_csv(csv_path):
                     elif "CWE-269" in cwe:
                         controls.extend(["SI-7"])  # Privilege Management
                 risks.append({
-                    "mitigating_controls": controls,
+                    "mitigating_controls": [normalize_control_id(c) for c in controls],
                     "exploitation_score": 10.0,
                     "impact_score": 10.0,
-                    "cwe": cwe if isinstance(cwe, str) else ""
+                    "cwe": cwe if isinstance(cwe, str) else "",
+                    "cve_id": cve_id
                 })
             else:
                 controls = row.get("Mitigating Controls", "").split(",")
-                controls = [ctrl.strip().upper() for ctrl in controls if ctrl.strip()]
+                controls = [normalize_control_id(ctrl.strip()) for ctrl in controls if ctrl.strip()]
                 exploitation_score = float(row.get("Exploitation Score", 0.0))
                 impact_score = float(row.get("Impact Score", 0.0))
                 risks.append({
@@ -142,19 +158,71 @@ def parse_nvd(data_dir):
         else:
             logging.debug(f"CVE {cve_id}: No CVSS v3.1 score, defaulting to 0.0")
         risks.append({
-            "mitigating_controls": controls,
+            "mitigating_controls": [normalize_control_id(c) for c in controls],
             "exploitation_score": score,
             "impact_score": score,
-            "cwe": cwe
+            "cwe": cwe,
+            "cve_id": cve_id
         })
     logging.info(f"Parsed {len(risks)} CVEs from NVD JSON files")
     return risks
 
-def parse_all_datasets(data_dir="data"):
-    """Parse all datasets (CSV and NVD JSON) in the data directory.
+def parse_kev_attack_mapping(json_path, attack_mappings):
+    """Parse KEV-to-ATT&CK mapping JSON and cross-reference with ATT&CK-to-NIST.
+
+    Args:
+        json_path (str): Path to the KEV ATT&CK mapping JSON file.
+        attack_mappings (dict): ATT&CK-to-NIST control mappings.
+
+    Returns:
+        list: List of risk dictionaries with controls and scores.
+    """
+    try:
+        with open(json_path, "r") as f:
+            data = json.load(f)
+        risks = []
+        if not isinstance(data.get("mapping_objects"), list):
+            logging.error(f"Invalid structure in {json_path}: 'mapping_objects' missing or not a list")
+            return []
+        
+        for item in data["mapping_objects"]:
+            if not isinstance(item, dict):
+                logging.warning(f"Skipping invalid item in {json_path}: {item}")
+                continue
+            cve_id = item.get("cve_id")
+            technique_id = item.get("attack_object_id")
+            if not cve_id or not technique_id:
+                logging.warning(f"Skipping item missing cve_id or attack_object_id: {item}")
+                continue
+            controls = []
+            if technique_id in attack_mappings:
+                controls = [normalize_control_id(c) for c in attack_mappings[technique_id]]
+                logging.debug(f"Mapped {technique_id} to controls: {controls}")
+            else:
+                logging.debug(f"No NIST controls mapped for technique {technique_id}")
+                controls = ["SI-2"]  # Default for KEV vulnerabilities
+            risks.append({
+                "mitigating_controls": controls,
+                "exploitation_score": 10.0,  # KEV vulnerabilities are high priority
+                "impact_score": 10.0,
+                "cwe": "",
+                "cve_id": cve_id
+            })
+        logging.info(f"Parsed {len(risks)} risks from {json_path} with controls {[r['mitigating_controls'] for r in risks[:5]]}")
+        return risks
+    except json.JSONDecodeError as e:
+        logging.error(f"Error parsing {json_path}: {e}")
+        return []
+    except Exception as e:
+        logging.error(f"Unexpected error parsing {json_path}: {e}")
+        return []
+
+def parse_all_datasets(data_dir="data", attack_mappings=None):
+    """Parse all datasets (CSV, NVD JSON, KEV ATT&CK JSON) in the data directory.
 
     Args:
         data_dir (str): Directory containing data files.
+        attack_mappings (dict): ATT&CK-to-NIST control mappings for KEV cross-referencing.
 
     Returns:
         dict: Dictionary mapping source names to lists of risks.
@@ -169,6 +237,10 @@ def parse_all_datasets(data_dir="data"):
             if risks:
                 all_risks[source_name] = risks
                 csv_count += 1
+        elif filename == "kev_attack_mapping.json":
+            risks = parse_kev_attack_mapping(os.path.join(data_dir, filename), attack_mappings or {})
+            if risks:
+                all_risks["kev_attack"] = risks
     
     # Parse NVD data if present
     if any(os.path.exists(os.path.join(data_dir, f)) for f in ["nvdcve-1.1-2025.json", "nvdcve-1.1-recent.json", "nvdcve-1.1-modified.json"]):
@@ -179,19 +251,18 @@ def parse_all_datasets(data_dir="data"):
     # Always include fallback data
     logging.info("Adding fallback risks for additional control coverage")
     all_risks.setdefault("fallback", []).extend([
-        {"mitigating_controls": ["SI-2"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": ""},  # Vulnerability remediation
-        {"mitigating_controls": ["IA-5"], "exploitation_score": 7.0, "impact_score": 7.0, "cwe": ""},  # Credential abuse
-        {"mitigating_controls": ["AT-2"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Phishing training
-        {"mitigating_controls": ["SC-8"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Secure communications
-        {"mitigating_controls": ["CM-6"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Configuration settings
-        {"mitigating_controls": ["SI-7"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Software Integrity
-        {"mitigating_controls": ["SC-5"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Denial of Service Protection
-        {"mitigating_controls": ["IA-2"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Authentication
-        {"mitigating_controls": ["AC-3"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Access Enforcement
-        {"mitigating_controls": ["AC-4"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Information Flow Enforcement
-        {"mitigating_controls": ["AC-6"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""}   # Least Privilege
+        {"mitigating_controls": [normalize_control_id("SI-2")], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": ""},  # Vulnerability remediation
+        {"mitigating_controls": [normalize_control_id("IA-5")], "exploitation_score": 7.0, "impact_score": 7.0, "cwe": ""},  # Credential abuse
+        {"mitigating_controls": [normalize_control_id("AT-2")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Phishing training
+        {"mitigating_controls": [normalize_control_id("SC-8")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Secure communications
+        {"mitigating_controls": [normalize_control_id("CM-6")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Configuration settings
+        {"mitigating_controls": [normalize_control_id("SI-7")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Software Integrity
+        {"mitigating_controls": [normalize_control_id("SC-5")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Denial of Service Protection
+        {"mitigating_controls": [normalize_control_id("IA-2")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Authentication
+        {"mitigating_controls": [normalize_control_id("AC-3")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Access Enforcement
+        {"mitigating_controls": [normalize_control_id("AC-4")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""},  # Information Flow Enforcement
+        {"mitigating_controls": [normalize_control_id("AC-6")], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": ""}   # Least Privilege
     ])
     logging.info("Added fallback risks for SI-2, IA-5, AT-2, SC-8, CM-6, SI-7, SC-5, IA-2, AC-3, AC-4, AC-6")
     
-    logging.info(f"Parsed risks from {csv_count} CSVs and NVD data: {sum(len(risks) for risks in all_risks.values())} total risks")
-    return all_risks
+    logging.info(f"Parsed risks from {csv_count} CSVs, NVD, and KEV ATT&CK
