@@ -1,4 +1,9 @@
 {
+  "weights": {
+    "exploitation": 0.4,
+    "severity": 0.4,
+    "applicability": 0.2
+  },
   "sources": [
     {
       "name": "CISA KEV",
@@ -16,19 +21,19 @@
       "name": "IBM Breach",
       "url": "https://example.com/ibm_breach.csv",
       "type": "csv",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "CrowdStrike",
       "url": "https://example.com/crowdstrike.csv",
       "type": "csv",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "Tenable",
       "url": "https://example.com/tenable.csv",
       "type": "csv",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "NVD CVE",
