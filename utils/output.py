@@ -12,10 +12,11 @@ def write_outputs(prioritized_controls, data_dir):
 
     Args:
         prioritized_controls (list): List of tuples (control_id, control_details).
-        data_dir (str): Directory to save output files.
+        data_dir (str): Directory containing data files (used to find project root).
     """
-    os.makedirs(data_dir, exist_ok=True)
-    output_dir = os.path.join(data_dir, "outputs")
+    # Set output directory as peer to data_dir
+    project_root = os.path.dirname(data_dir)  # e.g., /Users/p1krw01/Projects/RiskToNIST
+    output_dir = os.path.join(project_root, "outputs")
     os.makedirs(output_dir, exist_ok=True)
     
     # Write JSON output
@@ -50,8 +51,12 @@ def write_outputs(prioritized_controls, data_dir):
     
     # Write HTML output
     html_path = os.path.join(output_dir, "controls.html")
+    template_path = os.path.join(project_root, "controls.html")
     try:
-        env = Environment(loader=FileSystemLoader("."))
+        if not os.path.exists(template_path):
+            logging.warning(f"Template {template_path} not found, skipping HTML output")
+            return
+        env = Environment(loader=FileSystemLoader(project_root))
         template = env.get_template("controls.html")
         html_content = template.render(controls=prioritized_controls)
         with open(html_path, "w") as f:
