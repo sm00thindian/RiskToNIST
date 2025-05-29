@@ -18,16 +18,29 @@ def parse_csv(csv_path):
     try:
         df = pd.read_csv(csv_path)
         risks = []
+        source_name = os.path.basename(csv_path).replace(".csv", "")
         for _, row in df.iterrows():
-            mitigating_controls = row.get("Mitigating Controls", "").split(",")
-            mitigating_controls = [ctrl.strip().upper() for ctrl in mitigating_controls if ctrl.strip()]
-            exploitation_score = float(row.get("Exploitation Score", 0.0))
-            impact_score = float(row.get("Impact Score", 0.0))
-            risks.append({
-                "mitigating_controls": mitigating_controls,
-                "exploitation_score": exploitation_score,
-                "impact_score": impact_score
-            })
+            # Handle CISA KEV specifically
+            if source_name == "cisa_kev":
+                cve_id = row.get("cveID", "")
+                if not cve_id:
+                    logging.warning(f"Skipping row in {csv_path} with missing cveID")
+                    continue
+                risks.append({
+                    "mitigating_controls": ["SI-2"],  # Flaw Remediation for exploited CVEs
+                    "exploitation_score": 10.0,  # High score for known exploited vulnerabilities
+                    "impact_score": 10.0
+                })
+            else:
+                mitigating_controls = row.get("Mitigating Controls", "").split(",")
+                mitigating_controls = [ctrl.strip().upper() for ctrl in mitigating_controls if ctrl.strip()]
+                exploitation_score = float(row.get("Exploitation Score", 0.0))
+                impact_score = float(row.get("Impact Score", 0.0))
+                risks.append({
+                    "mitigating_controls": mitigating_controls,
+                    "exploitation_score": exploitation_score,
+                    "impact_score": impact_score
+                })
         logging.info(f"Parsed {len(risks)} risks from {csv_path}")
         return risks
     except Exception as e:
@@ -86,9 +99,9 @@ def parse_nvd(data_dir):
         else:
             logging.debug(f"CVE {cve_id}: No CVSS v3.1 score, defaulting to 0.0")
         risks.append({
-            "mitigating_controls": ["RA-5"],  # Default mapping for vulnerabilities
+            "mitigating_controls": ["RA-5"],  # Vulnerability Scanning
             "exploitation_score": score,
-            "impact_score": score  # Use CVSS score for both
+            "impact_score": score
         })
     logging.info(f"Parsed {len(risks)} CVEs from NVD JSON files")
     return risks
@@ -103,17 +116,31 @@ def parse_all_datasets(data_dir="data"):
         dict: Dictionary mapping source names to lists of risks.
     """
     all_risks = {}
+    csv_count = 0
     for filename in os.listdir(data_dir):
         if filename.endswith(".csv"):
             source_name = filename.replace(".csv", "")
             csv_path = os.path.join(data_dir, filename)
-            all_risks[source_name] = parse_csv(csv_path)
+            risks = parse_csv(csv_path)
+            if risks:
+                all_risks[source_name] = risks
+                csv_count += 1
     
     # Parse NVD data if present
     if any(os.path.exists(os.path.join(data_dir, f)) for f in ["nvdcve-1.1-2025.json", "nvdcve-1.1-recent.json", "nvdcve-1.1-modified.json"]):
-        all_risks["nvd_cve"] = parse_nvd(data_dir)
+        nvd_risks = parse_nvd(data_dir)
+        if nvd_risks:
+            all_risks["nvd_cve"] = nvd_risks
     
+    # Fallback data if no risks parsed
     if not all_risks:
-        logging.error("No valid risk data parsed from any source.")
+        logging.warning("No valid risk data parsed, using fallback data")
+        all_risks["fallback"] = [
+            {"mitigating_controls": ["SI-2"], "exploitation_score": 8.0, "impact_score": 8.0},  # Vulnerability remediation
+            {"mitigating_controls": ["IA-5"], "exploitation_score": 7.0, "impact_score": 7.0},  # Credential abuse
+            {"mitigating_controls": ["AT-2"], "exploitation_score": 6.0, "impact_score": 6.0}   # Phishing training
+        ]
+        logging.info("Added fallback risks for SI-2, IA-5, AT-2")
     
+    logging.info(f"Parsed risks from {csv_count} CSVs and NVD data: {sum(len(risks) for risks in all_risks.values())} total risks")
     return all_risks
