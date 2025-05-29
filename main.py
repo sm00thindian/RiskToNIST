@@ -12,7 +12,7 @@ import threading
 import argparse
 from utils.download import download_datasets
 from utils.parse import parse_all_datasets
-from utils.map_risks import map_risks_to_controls, normalize_and_prioritize
+from utils.map_risks import map_risks_to_controls, normalize_and_prioritize, load_attack_mappings
 from utils.output import generate_outputs
 
 def progress_wheel(stop_event):
@@ -56,7 +56,7 @@ def main():
     wheel_thread = threading.Thread(target=progress_wheel, args=(stop_event,))
     wheel_thread.start()
     try:
-        download_datasets(config_path=args.config)
+        download_datasets(config_path=args.config, data_dir=args.data_dir)
     except Exception as e:
         print(f"Error during download: {e}")
         stop_event.set()
@@ -71,7 +71,7 @@ def main():
     try:
         all_risks = parse_all_datasets(data_dir=args.data_dir)
         if not any(all_risks.values()):
-            print("Error: No valid risk data parsed from CSVs.")
+            print("Error: No valid risk data parsed from CSVs or NVD.")
             sys.exit(1)
     except Exception as e:
         print(f"Error during parsing: {e}")
@@ -80,7 +80,8 @@ def main():
     # Map risks to NIST 800-53 controls and prioritize
     print("Mapping risks to controls and prioritizing...")
     try:
-        controls = map_risks_to_controls(all_risks)
+        attack_mappings = load_attack_mappings(data_dir=args.data_dir)
+        controls = map_risks_to_controls(all_risks, data_dir=args.data_dir)
         prioritized_controls = normalize_and_prioritize(controls)
     except Exception as e:
         print(f"Error during mapping or prioritization: {e}")
@@ -89,7 +90,7 @@ def main():
     # Generate outputs
     print("Generating outputs...")
     try:
-        generate_outputs(prioritized_controls)
+        generate_outputs(prioritized_controls, attack_mappings=attack_mappings)
     except Exception as e:
         print(f"Error during output generation: {e}")
         sys.exit(1)
@@ -98,6 +99,7 @@ def main():
     print("- JSON: outputs/controls.json")
     print("- CSV: outputs/top_50_controls.csv")
     print("- HTML: outputs/controls.html (open in a browser)")
+    print("- ATT&CK Mappings: outputs/attack_mappings.json")
 
 if __name__ == "__main__":
     main()
