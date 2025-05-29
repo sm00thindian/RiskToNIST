@@ -100,18 +100,19 @@ def map_risks_to_controls(all_risks, data_dir="data"):
             # Enhance NVD and CISA KEV with ATT&CK mappings
             if source_name in ["nvd_cve", "cisa_kev"] and attack_mappings:
                 cwe = risk.get("cwe", "")
-                if "CWE-22" in cwe:
-                    if "T1190" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1190"])  # Exploit Public-Facing App
-                        logging.debug(f"Applied T1190 controls for CWE-22: {attack_mappings['T1190']}")
-                elif "CWE-79" in cwe:
-                    if "T1566" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1566"])  # Phishing
-                        logging.debug(f"Applied T1566 controls for CWE-79: {attack_mappings['T1566']}")
-                elif any(cwe in ["CWE-94", "CWE-288", "CWE-502", "CWE-78"] for cwe in cwe):
-                    if "T1078" in attack_mappings:
-                        controls_to_map.extend(attack_mappings["T1078"])  # Valid Accounts
-                        logging.debug(f"Applied T1078 controls for CWE-94/288/502/78: {attack_mappings['T1078']}")
+                if isinstance(cwe, str):
+                    if "CWE-22" in cwe:
+                        if "T1190" in attack_mappings:
+                            controls_to_map.extend(attack_mappings["T1190"])  # Exploit Public-Facing App
+                            logging.debug(f"Applied T1190 controls for CWE-22: {attack_mappings['T1190']}")
+                    elif "CWE-79" in cwe:
+                        if "T1566" in attack_mappings:
+                            controls_to_map.extend(attack_mappings["T1566"])  # Phishing
+                            logging.debug(f"Applied T1566 controls for CWE-79: {attack_mappings['T1566']}")
+                    elif any(cwe_id in cwe for cwe_id in ["CWE-94", "CWE-288", "CWE-502", "CWE-78"]):
+                        if "T1078" in attack_mappings:
+                            controls_to_map.extend(attack_mappings["T1078"])  # Valid Accounts
+                            logging.debug(f"Applied T1078 controls for CWE-94/288/502/78: {attack_mappings['T1078']}")
                 controls_to_map = list(set(controls_to_map))  # Remove duplicates
             
             for control_id in controls_to_map:
