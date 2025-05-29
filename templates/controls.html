@@ -1,60 +1,36 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>NIST 800-53 Control Prioritization</title>
+    <title>NIST SP 800-53 Prioritized Controls</title>
     <style>
-        table {
-            border-collapse: collapse;
-            width: 100%;
-        }
-        th, td {
-            border: 1px solid black;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
     </style>
 </head>
 <body>
-    <h1>NIST 800-53 Control Prioritization Based on Risk</h1>
-    <p>The following table lists the top 50 NIST 800-53 controls prioritized based on risk, sorted by total score in descending order.</p>
-    <p><strong>Column Descriptions:</strong></p>
-    <ul>
-        <li><strong>Control ID:</strong> The unique identifier for the control.</li>
-        <li><strong>Control Name:</strong> The name of the control.</li>
-        <li><strong>Control Family:</strong> The family to which the control belongs.</li>
-        <li><strong>Max Exploitation:</strong> The highest exploitation score from associated risks.</li>
-        <li><strong>Max Severity:</strong> The highest severity score from associated risks.</li>
-        <li><strong>Applicability:</strong> A default score indicating the control's broad applicability.</li>
-        <li><strong>Total Score:</strong> The weighted sum of the above scores.</li>
-    </ul>
+    <h1>Prioritized NIST SP 800-53 Controls</h1>
     <table>
-        <thead>
-            <tr>
-                <th>Control ID</th>
-                <th>Control Name</th>
-                <th>Control Family</th>
-                <th>Max Exploitation</th>
-                <th>Max Severity</th>
-                <th>Applicability</th>
-                <th>Total Score</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for control in controls %}
-            <tr>
-                <td>{{ control.id }}</td>
-                <td>{{ control.name }}</td>
-                <td>{{ control.family }}</td>
-                <td>{{ "%.2f" | format(control.max_exploitation) }}</td>
-                <td>{{ "%.2f" | format(control.max_severity) }}</td>
-                <td>{{ "%.2f" | format(control.applicability) }}</td>
-                <td>{{ "%.2f" | format(control.total_score) }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
+        <tr>
+            <th>Control ID</th>
+            <th>Title</th>
+            <th>Family</th>
+            <th>Total Score</th>
+            <th>Max Exploitation</th>
+            <th>Max Severity</th>
+            <th>Applicability</th>
+        </tr>
+        {% for control_id, details in controls %}
+        <tr>
+            <td>{{ control_id }}</td>
+            <td>{{ details.title }}</td>
+            <td>{{ details.family_title }}</td>
+            <td>{{ details.total_score | round(2) }}</td>
+            <td>{{ details.max_exploitation | round(2) }}</td>
+            <td>{{ details.max_severity | round(2) }}</td>
+            <td>{{ details.applicability | round(2) }}</td>
+        </tr>
+        {% endfor %}
     </table>
 </body>
 </html>
