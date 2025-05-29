@@ -68,3 +68,4 @@ def normalize_and_prioritize(controls):
             0.2 * control["applicability"]       # 20% Applicability
         )
     return sorted(controls.items(), key=lambda x: x[1]["total_score"], reverse=True)[:50]
+    
