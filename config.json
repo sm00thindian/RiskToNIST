@@ -1,0 +1,29 @@
+{
+  "sources": [
+    {
+      "name": "CISA KEV",
+      "url": "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv",
+      "enabled": true
+    },
+    {
+      "name": "Verizon DBIR",
+      "url": "https://example.com/verizon_dbir.csv",
+      "enabled": false
+    },
+    {
+      "name": "IBM Breach",
+      "url": "https://example.com/ibm_breach.csv",
+      "enabled": false
+    },
+    {
+      "name": "CrowdStrike",
+      "url": "https://example.com/crowdstrike.csv",
+      "enabled": false
+    },
+    {
+      "name": "Tenable",
+      "url": "https://example.com/tenable.csv",
+      "enabled": false
+    }
+  ]
+}
