@@ -19,33 +19,35 @@ def generate_nist_controls(data_dir):
         if not os.path.exists(input_path):
             logging.error(f"NIST SP 800-53 catalog not found at {input_path}")
             return
+        logging.info(f"Loading NIST SP 800-53 catalog from {input_path}")
         with open(input_path, "r") as f:
             catalog = json.load(f)
-        logging.info(f"Loaded NIST SP 800-53 catalog from {input_path}")
-
+        
         # Initialize controls dictionary
         controls_dict = {}
-
-        # Process groups (families) and their controls
         groups = catalog.get("catalog", {}).get("groups", [])
+        logging.info(f"Processing {len(groups)} control families")
+        
         for group in groups:
             family_title = group.get("title", "Unknown")
-            for control in group.get("controls", []):
-                control_id = control.get("id", "").upper()  # Normalize to upper case (e.g., ac-1)
+            controls = group.get("controls", [])
+            logging.debug(f"Processing family: {family_title} with {len(controls)} controls")
+            for control in controls:
+                control_id = control.get("id", "").upper()
                 control_title = control.get("title", control_id)
                 controls_dict[control_id] = {
                     "title": control_title,
                     "family_title": family_title
                 }
-                # Process control enhancements (subcontrols)
-                for subcontrol in control.get("controls", []):
+                subcontrols = control.get("controls", [])
+                for subcontrol in subcontrols:
                     subcontrol_id = subcontrol.get("id", "").upper()
                     subcontrol_title = subcontrol.get("title", subcontrol_id)
                     controls_dict[subcontrol_id] = {
                         "title": subcontrol_title,
                         "family_title": family_title
                     }
-
+        
         # Save to nist_controls.json
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
@@ -54,6 +56,3 @@ def generate_nist_controls(data_dir):
     
     except Exception as e:
         logging.error(f"Failed to generate nist_controls.json: {e}")
-
-if __name__ == "__main__":
-    generate_nist_controls("data")
