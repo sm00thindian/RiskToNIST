@@ -3,9 +3,10 @@ import csv
 import os
 import logging
 from jinja2 import Environment, FileSystemLoader
+from datetime import datetime
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def write_outputs(prioritized_controls, data_dir):
     """Write prioritized controls to JSON, CSV, and HTML files.
@@ -40,7 +41,7 @@ def write_outputs(prioritized_controls, data_dir):
                 writer.writerow([
                     control_id,
                     details.get("title", ""),
-                    details.get("family_title", ""),
+                    details.get("family_title", "Unknown"),
                     round(details.get("total_score", 0.0), 2),
                     round(details.get("max_exploitation", 0.0), 2),
                     round(details.get("max_severity", 0.0), 2),
@@ -59,7 +60,8 @@ def write_outputs(prioritized_controls, data_dir):
             return
         env = Environment(loader=FileSystemLoader(os.path.join(project_root, "templates")))
         template = env.get_template("controls.html")
-        html_content = template.render(controls=prioritized_controls)
+        current_date = datetime.now().strftime("%B %d, %Y")
+        html_content = template.render(controls=prioritized_controls, current_date=current_date)
         with open(html_path, "w") as f:
             f.write(html_content)
         logging.info(f"Wrote HTML output to {html_path}")
