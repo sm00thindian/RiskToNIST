@@ -38,7 +38,7 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
         
         headers = {"apiKey": api_key} if api_key else {}
         params = {
-            "pubStartDate": "2024-01-01T00:00:00:000 UTC-05:00",
+            "pubStartDate": "2023-01-01T00:00:00:000 UTC-05:00",
             "pubEndDate": "2024-12-31T23:59:59:999 UTC-05:00",
             "resultsPerPage": 200
         }
@@ -46,6 +46,7 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
         start_index = 0
         results_per_page = params["resultsPerPage"]
         max_results = 1000  # Limit for testing
+        total_results = 0  # Initialize to avoid reference error
 
         while True:
             params["startIndex"] = start_index
@@ -61,7 +62,7 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             data = response.json()
             items = data.get("vulnerabilities", [])
             all_items.extend(items)
-            total_results = data.get("totalResults", 0)
+            total_results = data.get("totalResults", total_results)
             logging.info(f"Fetched {len(items)} CVEs, total so far: {len(all_items)}/{total_results}")
 
             if len(all_items) >= total_results or not items or len(all_items) >= max_results:
