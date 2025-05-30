@@ -52,17 +52,26 @@ fi
 
 # Generate nist_controls.json from OSCAL catalog
 echo "Generating nist_controls.json from NIST SP 800-53 catalog..."
-python3 utils/generate_nist_controls.py > outputs/run.log 2>&1
+python3 utils/generate_nist_controls.py >> outputs/run.log 2>&1
 if [ ! -f "data/nist_controls.json" ]; then
     echo "Error: Failed to generate nist_controls.json. Check outputs/run.log for errors."
     exit 1
 fi
 
-# Download datasets and generate outputs
+# Download datasets and generate outputs with bash-based timeout
 echo "Running the RiskToNIST project to download datasets and generate outputs..."
-# Run with timeout and in foreground for debugging
-timeout 600 python3 main.py || {
-    echo "Error: main.py timed out or failed. Check terminal output or outputs/run.log for details."
+{
+    python3 main.py 2>&1 | tee -a outputs/run.log &
+    pid=$!
+    sleep 1800  # 30-minute timeout
+    if kill -0 $pid 2>/dev/null; then
+        echo "Error: main.py timed out after 30 minutes. Killing process." | tee -a outputs/run.log
+        kill $pid
+        exit 1
+    fi
+    wait $pid
+} || {
+    echo "Error: main.py failed. Check outputs/run.log for details." | tee -a outputs/run.log
     exit 1
 }
 
@@ -73,12 +82,12 @@ if [ -f "outputs/controls.json" ] && [ -f "outputs/controls.html" ]; then
     echo "- HTML output: outputs/controls.html (open in a browser)"
     echo "- Log file: outputs/run.log"
 else
-    echo "Error: Failed to generate outputs. Check terminal output or outputs/run.log for errors."
+    echo "Error: Failed to generate outputs. Check outputs/run.log for errors."
     exit 1
 fi
 
 echo "Setup complete! To work in the virtual environment, run:"
 echo "source venv/bin/activate"
-echo "To re-run the project, use: python3 main.py > outputs/run.log 2>&1"
+echo "To re-run the project, use: python3 main.py | tee -a outputs/run.log"
 echo "To regenerate nist_controls.json, use: python3 utils/generate_nist_controls.py >> outputs/run.log 2>&1"
 echo "Check outputs/run.log for detailed logs."
