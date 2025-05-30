@@ -5,7 +5,7 @@ from datetime import datetime
 from .schema import validate_json  # Relative import
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def parse_cisa_kev(file_path):
     """Parse CISA KEV CSV file and return a list of risks.
@@ -66,29 +66,41 @@ def parse_nvd_cve(file_path, schema_path=None):
                 return []
         
         risks = []
-        for item in data.get("CVE_Items", []):
-            cve_id = item.get("cve", {}).get("CVE_data_meta", {}).get("ID", "")
+        skipped_items = 0
+        # Handle both CVE_Items (legacy) and vulnerabilities (NVD API) structures
+        items = data.get("CVE_Items", data.get("vulnerabilities", []))
+        logging.debug(f"Found {len(items)} items in {file_path} under {'vulnerabilities' if 'vulnerabilities' in data else 'CVE_Items'}")
+
+        for item in items:
+            # Adjust for NVD API structure: item is the CVE object if vulnerabilities, else item["cve"]
+            cve_data = item.get("cve") if "CVE_Items" in data else item
+            cve_id = cve_data.get("id", "")  # NVD API v2 uses "id" instead of CVE_data_meta.ID
             if not cve_id:
-                logging.debug(f"Skipping item in {file_path}: missing CVE ID")
+                skipped_items += 1
                 continue
             cwe_id = ""
-            for problem in item.get("cve", {}).get("problemtype", {}).get("problemtype_data", []):
+            for problem in cve_data.get("weaknesses", []):
                 for desc in problem.get("description", []):
                     if desc.get("value", "").startswith("CWE-"):
                         cwe_id = desc.get("value", "")
                         break
                 if cwe_id:
                     break
-            cvss_v3 = item.get("impact", {}).get("baseMetricV3", {}).get("cvssV3", {})
+            # Get CVSS v3.1 score from metrics
+            cvss_v3 = cve_data.get("metrics", {}).get("cvssMetricV31", [{}])[0].get("cvssData", {})
             base_score = cvss_v3.get("baseScore", 0.0)
+            description = cve_data.get("descriptions", [{}])[0].get("value", "")
             risks.append({
                 "mitigating_controls": ["SI-2", "RA-5"],  # Default controls
                 "exploitation_score": base_score,
                 "impact_score": base_score,
                 "cwe": cwe_id,
                 "cve_id": cve_id,
-                "risk_context": item.get("cve", {}).get("description", {}).get("description_data", [{}])[0].get("value", "")
+                "risk_context": description
             })
+        
+        if skipped_items > 0:
+            logging.info(f"Skipped {skipped_items} items in {file_path} due to missing CVE ID")
         logging.info(f"Parsed {len(risks)} risks from {file_path}")
         return risks
     except Exception as e:
