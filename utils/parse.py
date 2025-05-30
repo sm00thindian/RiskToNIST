@@ -59,11 +59,8 @@ def parse_nvd_cve(file_path, schema_path=None):
         # Validate against schema if provided
         if schema_path:
             logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
-            try:
-                validate_json(data, schema_path)
-            except Exception as e:
-                logging.error(f"Schema validation failed for {file_path}: {e}")
-                return []
+            if not validate_json(data, schema_path, skip_on_failure=True):
+                logging.warning(f"Continuing parsing {file_path} despite schema validation failure")
         
         risks = []
         skipped_items = 0
@@ -74,7 +71,7 @@ def parse_nvd_cve(file_path, schema_path=None):
         for item in items:
             # Adjust for NVD API structure: item is the CVE object if vulnerabilities, else item["cve"]
             cve_data = item.get("cve") if "CVE_Items" in data else item
-            cve_id = cve_data.get("id", "")  # NVD API v2 uses "id" instead of CVE_data_meta.ID
+            cve_id = cve_data.get("id", "")  # NVD API v2 uses "id"
             if not cve_id:
                 skipped_items += 1
                 continue
