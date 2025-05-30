@@ -11,14 +11,7 @@ from utils.output import write_outputs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_config(config_path):
-    """Load configuration from a JSON file.
-
-    Args:
-        config_path (str): Path to the configuration file.
-
-    Returns:
-        dict: Configuration dictionary.
-    """
+    """Load configuration from a JSON file."""
     try:
         logging.info(f"Loading configuration from {config_path}")
         with open(config_path, 'r') as f:
@@ -30,57 +23,38 @@ def load_config(config_path):
         raise
 
 def load_attack_mappings(data_dir):
-    """Load ATT&CK mappings from utils.map_risks to pass to parsing.
-
-    Args:
-        data_dir (str): Directory containing attack_mapping.json.
-
-    Returns:
-        dict: ATT&CK technique to NIST control mappings.
-    """
+    """Load ATT&CK mappings from utils.map_risks."""
     from utils.map_risks import load_attack_mappings
     logging.info(f"Loading ATT&CK mappings from {data_dir}")
     mappings = load_attack_mappings(data_dir)
     logging.info(f"Loaded {len(mappings.get('mapping_objects', []))} ATT&CK mappings")
     return mappings
 
-def main(config_path, data_dir):
-    """Main function to process risk data and generate prioritized controls.
-
-    Args:
-        config_path (str): Path to the configuration file.
-        data_dir (str): Directory for data files.
-    """
-    # Load configuration
+def main(config_path, data_dir, force_refresh=False):
+    """Main function to process risk data and generate prioritized controls."""
     config = load_config(config_path)
     
-    # Download datasets
     logging.info("Starting dataset downloads")
-    download_datasets(config, data_dir)
+    download_datasets(config, data_dir, force_refresh)
     logging.info("Completed dataset downloads")
     
-    # Load ATT&CK mappings for KEV cross-referencing
     attack_mappings = load_attack_mappings(data_dir)
     if not attack_mappings:
         logging.warning("No ATT&CK mappings loaded; KEV ATT&CK parsing may be limited")
     
-    # Parse all datasets
     logging.info("Starting dataset parsing")
     all_risks = parse_all_datasets(data_dir, attack_mappings)
     logging.info(f"Parsed risks from {len(all_risks)} sources")
     
-    # Map risks to controls
     logging.info("Mapping risks to NIST controls")
     controls, _ = map_risks_to_controls(all_risks, data_dir)
     logging.info(f"Mapped {len(controls)} controls")
     
-    # Normalize and prioritize controls
     weights = config.get("weights", {"exploitation": 0.4, "severity": 0.4, "applicability": 0.2})
     logging.info(f"Normalizing and prioritizing with weights: {weights}")
     prioritized_controls = normalize_and_prioritize(controls, weights)
     logging.info(f"Prioritized {len(prioritized_controls)} controls")
     
-    # Write outputs
     logging.info("Writing outputs")
     write_outputs(prioritized_controls, data_dir)
     logging.info("Completed writing outputs")
@@ -95,7 +69,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     try:
-        main(args.config, args.data_dir)
+        main(args.config, args.data_dir, args.force_refresh)
     except Exception as e:
         logging.error(f"Program failed: {e}")
         raise
