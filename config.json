@@ -39,7 +39,9 @@
       "name": "NVD CVE",
       "url": "https://services.nvd.nist.gov/rest/json/cves/2.0",
       "type": "api",
-      "enabled": true
+      "enabled": true,
+      "schema_url": "https://csrc.nist.gov/schema/nvd/api/2.0/cve_api_json_2.0.schema",
+      "schema_path": "data/nvd_cve_schema.json"
     },
     {
       "name": "ATTACK Mapping",
