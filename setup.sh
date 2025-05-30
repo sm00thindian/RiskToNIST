@@ -50,9 +50,17 @@ if [ ! -f "main.py" ]; then
     exit 1
 fi
 
+# Generate nist_controls.json from OSCAL catalog
+echo "Generating nist_controls.json from NIST SP 800-53 catalog..."
+python3 utils/generate_nist_controls.py >> outputs/run.log 2>&1
+if [ ! -f "data/nist_controls.json" ]; then
+    echo "Error: Failed to generate nist_controls.json. Check outputs/run.log for errors."
+    exit 1
+fi
+
 # Download datasets and generate outputs
 echo "Running the RiskToNIST project to download datasets and generate outputs..."
-python3 main.py > outputs/run.log 2>&1
+python3 main.py >> outputs/run.log 2>&1
 
 # Check if outputs were generated
 if [ -f "outputs/controls.json" ] && [ -f "outputs/controls.html" ]; then
@@ -67,5 +75,6 @@ fi
 
 echo "Setup complete! To work in the virtual environment, run:"
 echo "source venv/bin/activate"
-echo "To re-run the project, use: python3 main.py > outputs/run.log 2>&1"
+echo "To re-run the project, use: python3 main.py >> outputs/run.log 2>&1"
+echo "To regenerate nist_controls.json, use: python3 utils/generate_nist_controls.py >> outputs/run.log 2>&1"
 echo "Check outputs/run.log for detailed logs."
