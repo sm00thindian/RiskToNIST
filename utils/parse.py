@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from datetime import datetime
+from .schema import validate_json  # Changed to relative import
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -50,7 +51,6 @@ def parse_nvd_cve(file_path, schema_path=None):
     Returns:
         list: List of risk dictionaries.
     """
-    from schema import validate_json
     try:
         logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
         with open(file_path, "r") as f:
