@@ -63,9 +63,9 @@ echo "Running the RiskToNIST project to download datasets and generate outputs..
 {
     python3 main.py 2>&1 | tee -a outputs/run.log &
     pid=$!
-    sleep 1800  # 30-minute timeout
+    sleep 3600  # 60-minute timeout
     if kill -0 $pid 2>/dev/null; then
-        echo "Error: main.py timed out after 30 minutes. Killing process." | tee -a outputs/run.log
+        echo "Error: main.py timed out after 60 minutes. Killing process." | tee -a outputs/run.log
         kill $pid
         exit 1
     fi
