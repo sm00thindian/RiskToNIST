@@ -52,18 +52,20 @@ fi
 
 # Download datasets and generate outputs
 echo "Running the RiskToNIST project to download datasets and generate outputs..."
-python3 main.py
+python3 main.py > outputs/run.log 2>&1
 
 # Check if outputs were generated
 if [ -f "outputs/controls.json" ] && [ -f "outputs/controls.html" ]; then
     echo "Outputs successfully generated in 'outputs/' directory:"
     echo "- JSON output: outputs/controls.json"
     echo "- HTML output: outputs/controls.html (open in a browser)"
+    echo "- Log file: outputs/run.log"
 else
-    echo "Error: Failed to generate outputs. Check logs above for errors."
+    echo "Error: Failed to generate outputs. Check logs in outputs/run.log for errors."
     exit 1
 fi
 
 echo "Setup complete! To work in the virtual environment, run:"
 echo "source venv/bin/activate"
-echo "To re-run the project, use: python3 main.py"
+echo "To re-run the project, use: python3 main.py > outputs/run.log 2>&1"
+echo "Check outputs/run.log for detailed logs."
