@@ -9,37 +9,43 @@
       "name": "CISA KEV",
       "url": "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv",
       "type": "csv",
-      "enabled": true
+      "enabled": true,
+      "output": "cisa_kev.csv"
     },
     {
       "name": "Verizon DBIR",
       "url": "https://example.com/verizon_dbir.csv",
       "type": "csv",
-      "enabled": false
+      "enabled": false,
+      "output": "verizon_dbir.csv"
     },
     {
       "name": "IBM Breach",
       "url": "https://example.com/ibm_breach.csv",
       "type": "csv",
-      "enabled": false
+      "enabled": false,
+      "output": "ibm_breach.csv"
     },
     {
       "name": "CrowdStrike",
       "url": "https://example.com/crowdstrike.csv",
       "type": "csv",
-      "enabled": false
+      "enabled": false,
+      "output": "crowdstrike.csv"
     },
     {
       "name": "Tenable",
       "url": "https://example.com/tenable.csv",
       "type": "csv",
-      "enabled": false
+      "enabled": false,
+      "output": "tenable.csv"
     },
     {
       "name": "NVD CVE",
       "url": "https://services.nvd.nist.gov/rest/json/cves/2.0",
       "type": "api",
       "enabled": true,
+      "output": "nvdcve-1.1-2025.json",
       "schema_url": "https://csrc.nist.gov/schema/nvd/api/2.0/cve_api_json_2.0.schema",
       "schema_path": "data/nvd_cve_schema.json"
     },
@@ -47,13 +53,15 @@
       "name": "ATTACK Mapping",
       "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-16.1/nist_800_53-rev5/enterprise/nist_800_53-rev5_attack-16.1-enterprise_json.json",
       "type": "json",
-      "enabled": true
+      "enabled": true,
+      "output": "attack_mapping.json"
     },
     {
       "name": "KEV ATTACK Mapping",
       "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/kev/attack-15.1/kev-02.13.2025/enterprise/kev-02.13.2025_attack-15.1-enterprise_json.json",
       "type": "json",
-      "enabled": true
+      "enabled": true,
+      "output": "kev_attack_mapping.json"
     }
   ]
 }
