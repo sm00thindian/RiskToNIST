@@ -3,6 +3,7 @@ import os
 import requests
 import time
 import json
+from schema import download_schema, validate_json
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -26,15 +27,22 @@ def download_file(url, output_path):
     except requests.RequestException as e:
         logging.error(f"Failed to download {url}: {e}")
 
-def download_nvd_api(api_url, output_path, api_key):
-    """Download CVE data from the NVD API and save as JSON.
+def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path=None):
+    """Download CVE data from the NVD API, validate against schema, and save as JSON.
 
     Args:
         api_url (str): NVD API base URL.
         output_path (str): Path to save the JSON file.
         api_key (str): NVD API key.
+        schema_url (str, optional): URL of the schema for validation.
+        schema_path (str, optional): Path to save the schema.
     """
     try:
+        # Download schema if provided
+        if schema_url and schema_path:
+            logging.debug(f"Downloading schema from {schema_url}")
+            download_schema(schema_url, schema_path)
+        
         headers = {"apiKey": api_key} if api_key else {}
         params = {
             "pubStartDate": "2025-01-01T00:00:00:000 UTC-05:00",
@@ -63,6 +71,12 @@ def download_nvd_api(api_url, output_path, api_key):
         nvd_data = {
             "CVE_Items": [item.get("cve", {}) for item in all_items]
         }
+        
+        # Validate against schema if provided
+        if schema_path:
+            logging.debug(f"Validating NVD data against schema: {schema_path}")
+            validate_json(nvd_data, schema_path)
+        
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
             json.dump(nvd_data, f)
@@ -88,6 +102,8 @@ def download_datasets(config, data_dir):
         url = source.get("url", "")
         source_type = source.get("type", "")
         output_file = source.get("output", "")
+        schema_url = source.get("schema_url")
+        schema_path = source.get("schema_path")
         
         if not all([name, url, source_type, output_file]):
             logging.warning(f"Skipping source {name}: missing required fields")
@@ -101,7 +117,7 @@ def download_datasets(config, data_dir):
         elif source_type == "api":
             if name == "NVD CVE":
                 logging.debug(f"Fetching {name} from NVD API {url}")
-                download_nvd_api(url, output_path, api_key)
+                download_nvd_api(url, output_path, api_key, schema_url, schema_path)
             else:
                 logging.warning(f"API source type not supported for {name}. Only NVD CVE API is implemented.")
         else:
