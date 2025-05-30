@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from datetime import datetime
@@ -39,7 +40,7 @@ def parse_nvd_cve(file_path, schema_path=None):
     try:
         logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
         with open(file_path, "rb") as f:
-            # Load minimal data to check structure
+            # Detect structure
             parser = ijson.parse(f)
             has_vulnerabilities = False
             has_cve_items = False
@@ -51,12 +52,11 @@ def parse_nvd_cve(file_path, schema_path=None):
                 if has_vulnerabilities or has_cve_items:
                     break
         
-        # Rewind file and validate
+        # Validate schema
         with open(file_path, "rb") as f:
             if schema_path:
                 logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
-                # Load JSON for validation (ijson doesn't support full validation)
-                data = json.load(f)
+                data = json.load(f)  # Load for validation
                 if not validate_json(data, schema_path, skip_on_failure=True):
                     logging.warning(f"Continuing parsing {file_path} despite schema validation failure")
                 f.seek(0)
