@@ -64,14 +64,15 @@ def parse_nvd_cve(file_path, schema_path=None):
         
         risks = []
         skipped_items = 0
-        # Handle both CVE_Items (legacy) and vulnerabilities (NVD API) structures
         items = data.get("CVE_Items", data.get("vulnerabilities", []))
-        logging.debug(f"Found {len(items)} items in {file_path} under {'vulnerabilities' if 'vulnerabilities' in data else 'CVE_Items'}")
+        total_items = len(items)
+        logging.info(f"Parsing {total_items} items in {file_path}")
 
-        for item in items:
-            # Adjust for NVD API structure: item is the CVE object if vulnerabilities, else item["cve"]
+        for i, item in enumerate(items, 1):
+            if i % 1000 == 0:
+                logging.info(f"Processed {i}/{total_items} items in {file_path}")
             cve_data = item.get("cve") if "CVE_Items" in data else item
-            cve_id = cve_data.get("id", "")  # NVD API v2 uses "id"
+            cve_id = cve_data.get("id", "")
             if not cve_id:
                 skipped_items += 1
                 continue
@@ -83,12 +84,11 @@ def parse_nvd_cve(file_path, schema_path=None):
                         break
                 if cwe_id:
                     break
-            # Get CVSS v3.1 score from metrics
             cvss_v3 = cve_data.get("metrics", {}).get("cvssMetricV31", [{}])[0].get("cvssData", {})
             base_score = cvss_v3.get("baseScore", 0.0)
             description = cve_data.get("descriptions", [{}])[0].get("value", "")
             risks.append({
-                "mitigating_controls": ["SI-2", "RA-5"],  # Default controls
+                "mitigating_controls": ["SI-2", "RA-5"],
                 "exploitation_score": base_score,
                 "impact_score": base_score,
                 "cwe": cwe_id,
@@ -143,7 +143,7 @@ def parse_kev_attack_mapping(json_path, attack_mappings):
                     controls.append(mapping.get("capability_id"))
             if not controls:
                 logging.warning(f"No NIST controls mapped for technique {technique_id} in CVE {cve_id}")
-                controls = ["SI-2"]  # Fallback control
+                controls = ["SI-2"]
             score = capability_scores.get(capability_group, 7.0)
             risks.append({
                 "mitigating_controls": controls,
@@ -180,7 +180,6 @@ def parse_all_datasets(data_dir, attack_mappings):
     for file_name in os.listdir(data_dir):
         if file_name.startswith("nvdcve-1.1-") and file_name.endswith(".json"):
             nvd_path = os.path.join(data_dir, file_name)
-            # Pass schema path for NVD CVE validation
             schema_path = os.path.join(data_dir, "nvd_cve_schema.json")
             all_risks[f"nvd_{file_name}"] = parse_nvd_cve(nvd_path, schema_path if os.path.exists(schema_path) else None)
     
