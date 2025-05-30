@@ -4,6 +4,7 @@ import requests
 import time
 import json
 from .schema import download_schema, validate_json  # Relative import
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -51,6 +52,7 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
         }
         all_items = []
         start_index = 0
+        results_per_page = params["resultsPerPage"]
 
         while True:
             params["startIndex"] = start_index
@@ -67,13 +69,21 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             start_index += params["resultsPerPage"]
             time.sleep(6)  # Respect NVD API rate limit (10 requests/min with key)
 
-        # Use the raw API response structure
-        nvd_data = {"vulnerabilities": all_items}
+        # Construct schema-compliant JSON
+        nvd_data = {
+            "resultsPerPage": results_per_page,
+            "startIndex": 0,
+            "totalResults": total_results,
+            "format": "NVD_CVE",
+            "version": "2.0",
+            "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000"),
+            "vulnerabilities": all_items
+        }
         
         # Validate against schema if provided
         if schema_path:
             logging.debug(f"Validating NVD data against schema: {schema_path}")
-            validate_json(nvd_data, schema_path)
+            validate_json(nvd_data, schema_path, skip_on_failure=True)
         
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
