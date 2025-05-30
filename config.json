@@ -65,7 +65,7 @@
     },
     {
       "name": "NIST SP 800-53 Catalog",
-      "url": "https://github.com/usnistgov/oscal-content/raw/refs/heads/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
+      "url": "https://github.com/usnistgov/oscal-content/raw/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
       "type": "json",
       "enabled": true,
       "output": "nist_sp800_53_catalog.json"
