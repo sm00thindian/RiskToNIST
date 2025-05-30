@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from datetime import datetime
@@ -39,48 +38,68 @@ def parse_nvd_cve(file_path, schema_path=None):
     """Parse NVD CVE JSON file and return a list of risks after schema validation."""
     try:
         logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
-        with open(file_path, "r") as f:
-            data = json.load(f)
-        
-        if schema_path:
-            logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
-            if not validate_json(data, schema_path, skip_on_failure=True):
-                logging.warning(f"Continuing parsing {file_path} despite schema validation failure")
-        
-        risks = []
-        skipped_items = 0
-        items = data.get("CVE_Items", data.get("vulnerabilities", []))
-        total_items = len(items)
-        logging.info(f"Parsing {total_items} items in {file_path}")
-
-        for i, item in enumerate(items, 1):
-            if i % 100 == 0:  # Reduced interval for frequent updates
-                logging.info(f"Processed {i}/{total_items} items in {file_path}")
-            cve_data = item.get("cve") if "CVE_Items" in data else item
-            cve_id = cve_data.get("id", "")
-            if not cve_id:
-                skipped_items += 1
-                continue
-            cwe_id = ""
-            for problem in cve_data.get("weaknesses", []):
-                for desc in problem.get("description", []):
-                    if desc.get("value", "").startswith("CWE-"):
-                        cwe_id = desc.get("value", "")
-                        break
-                if cwe_id:
+        with open(file_path, "rb") as f:
+            # Load minimal data to check structure
+            parser = ijson.parse(f)
+            has_vulnerabilities = False
+            has_cve_items = False
+            for prefix, event, value in parser:
+                if prefix == "vulnerabilities" and event == "start_array":
+                    has_vulnerabilities = True
+                elif prefix == "CVE_Items" and event == "start_array":
+                    has_cve_items = True
+                if has_vulnerabilities or has_cve_items:
                     break
-            cvss_v3 = cve_data.get("metrics", {}).get("cvssMetricV31", [{}])[0].get("cvssData", {})
-            base_score = cvss_v3.get("baseScore", 0.0)
-            description = cve_data.get("descriptions", [{}])[0].get("value", "")
-            risks.append({
-                "mitigating_controls": ["SI-2", "RA-5"],
-                "exploitation_score": base_score,
-                "impact_score": base_score,
-                "cwe": cwe_id,
-                "cve_id": cve_id,
-                "risk_context": description
-            })
         
+        # Rewind file and validate
+        with open(file_path, "rb") as f:
+            if schema_path:
+                logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
+                # Load JSON for validation (ijson doesn't support full validation)
+                data = json.load(f)
+                if not validate_json(data, schema_path, skip_on_failure=True):
+                    logging.warning(f"Continuing parsing {file_path} despite schema validation failure")
+                f.seek(0)
+            else:
+                data = None
+            
+            risks = []
+            skipped_items = 0
+            item_count = 0
+            key = "vulnerabilities.item" if has_vulnerabilities else "CVE_Items.item"
+            logging.info(f"Streaming {key} from {file_path}")
+            
+            for item in ijson.items(f, key):
+                item_count += 1
+                if item_count % 100 == 0:
+                    logging.info(f"Processed {item_count} items in {file_path}")
+                
+                cve_data = item.get("cve") if has_cve_items else item
+                cve_id = cve_data.get("id", "")
+                if not cve_id:
+                    skipped_items += 1
+                    continue
+                cwe_id = ""
+                for problem in cve_data.get("weaknesses", []):
+                    for desc in problem.get("description", []):
+                        if desc.get("value", "").startswith("CWE-"):
+                            cwe_id = desc.get("value", "")
+                            break
+                    if cwe_id:
+                        break
+                cvss_v3 = cve_data.get("metrics", {}).get("cvssMetricV31", [{}])[0].get("cvssData", {})
+                base_score = cvss_v3.get("baseScore", 0.0)
+                description = cve_data.get("descriptions", [{}])[0].get("value", "")
+                risks.append({
+                    "mitigating_controls": ["SI-2", "RA-5"],
+                    "exploitation_score": base_score,
+                    "impact_score": base_score,
+                    "cwe": cwe_id,
+                    "cve_id": cve_id,
+                    "risk_context": description
+                })
+        
+        logging.info(f"Processed {item_count} total items in {file_path}")
         if skipped_items > 0:
             logging.info(f"Skipped {skipped_items} items in {file_path} due to missing CVE ID")
         logging.info(f"Parsed {len(risks)} risks from {file_path}")
