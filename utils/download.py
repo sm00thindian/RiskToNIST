@@ -3,7 +3,7 @@ import os
 import requests
 import time
 import json
-from .schema import download_schema, validate_json  # Changed to relative import
+from .schema import download_schema, validate_json  # Relative import
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -111,7 +111,7 @@ def download_datasets(config, data_dir):
         
         output_path = os.path.join(data_dir, output_file)
         
-        if source_type == "file":
+        if source_type in ["file", "json"]:  # Added support for json type
             logging.debug(f"Downloading {name} from {url}")
             download_file(url, output_path)
         elif source_type == "api":
@@ -121,4 +121,4 @@ def download_datasets(config, data_dir):
             else:
                 logging.warning(f"API source type not supported for {name}. Only NVD CVE API is implemented.")
         else:
-            logging.warning(f"Unsupported source type '{source_type}' for {name}. Expected 'file' or 'api'. Skipping download.")
+            logging.warning(f"Unsupported source type '{source_type}' for {name}. Expected 'file', 'json', or 'api'. Skipping download.")
