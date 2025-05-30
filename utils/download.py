@@ -6,7 +6,7 @@ import json
 from .schema import download_schema, validate_json  # Relative import
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def download_file(url, output_path):
     """Download a file from a URL and save it to the specified path.
@@ -67,10 +67,8 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             start_index += params["resultsPerPage"]
             time.sleep(6)  # Respect NVD API rate limit (10 requests/min with key)
 
-        # Format to match NVD JSON feed structure
-        nvd_data = {
-            "CVE_Items": [item.get("cve", {}) for item in all_items]
-        }
+        # Use the raw API response structure
+        nvd_data = {"vulnerabilities": all_items}
         
         # Validate against schema if provided
         if schema_path:
@@ -111,7 +109,7 @@ def download_datasets(config, data_dir):
         
         output_path = os.path.join(data_dir, output_file)
         
-        if source_type in ["file", "json"]:  # Added support for json type
+        if source_type in ["file", "json"]:  # Support for json type
             logging.debug(f"Downloading {name} from {url}")
             download_file(url, output_path)
         elif source_type == "api":
