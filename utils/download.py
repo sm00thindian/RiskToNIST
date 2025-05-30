@@ -9,13 +9,17 @@ from datetime import datetime
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def download_file(url, output_path):
+def download_file(url, output_path, force_refresh=False):
     """Download a file from a URL and save it to the specified path.
 
     Args:
         url (str): URL of the file to download.
         output_path (str): Path to save the downloaded file.
+        force_refresh (bool): If True, overwrite existing file.
     """
+    if os.path.exists(output_path) and not force_refresh:
+        logging.info(f"File {output_path} already exists, skipping download")
+        return
     try:
         response = requests.get(url, stream=True, timeout=30)
         response.raise_for_status()
@@ -28,7 +32,7 @@ def download_file(url, output_path):
     except requests.RequestException as e:
         logging.error(f"Failed to download {url}: {e}")
 
-def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path=None):
+def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path=None, force_refresh=False):
     """Download CVE data from the NVD API, validate against schema, and save as JSON.
 
     Args:
@@ -37,7 +41,11 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
         api_key (str): NVD API key.
         schema_url (str, optional): URL of the schema for validation.
         schema_path (str, optional): Path to save the schema.
+        force_refresh (bool): If True, overwrite existing file.
     """
+    if os.path.exists(output_path) and not force_refresh:
+        logging.info(f"File {output_path} already exists, skipping NVD API download")
+        return
     try:
         # Download schema if provided
         if schema_url and schema_path:
@@ -48,12 +56,12 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
         params = {
             "pubStartDate": "2025-01-01T00:00:00:000 UTC-05:00",
             "pubEndDate": "2025-12-31T23:59:59:999 UTC-05:00",
-            "resultsPerPage": 500  # Reduced for testing
+            "resultsPerPage": 200  # Reduced further for performance
         }
         all_items = []
         start_index = 0
         results_per_page = params["resultsPerPage"]
-        max_results = 1000  # Limit total CVEs for testing
+        max_results = 1000  # Limit for testing
 
         while True:
             params["startIndex"] = start_index
@@ -69,7 +77,7 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             if len(all_items) >= total_results or not items or len(all_items) >= max_results:
                 break
             start_index += params["resultsPerPage"]
-            time.sleep(6)  # Respect NVD API rate limit (10 requests/min with key)
+            time.sleep(6)  # Respect NVD API rate limit
 
         # Construct schema-compliant JSON
         nvd_data = {
@@ -96,12 +104,13 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
     except Exception as e:
         logging.error(f"Error processing NVD API data: {e}")
 
-def download_datasets(config, data_dir):
+def download_datasets(config, data_dir, force_refresh=False):
     """Download datasets specified in the configuration.
 
     Args:
         config (dict): Configuration dictionary with sources.
         data_dir (str): Directory to save downloaded files.
+        force_refresh (bool): If True, overwrite existing files.
     """
     api_key = os.getenv("NVD_API_KEY")
     if not api_key:
@@ -119,15 +128,19 @@ def download_datasets(config, data_dir):
             logging.warning(f"Skipping source {name}: missing required fields")
             continue
         
+        if not source.get("enabled", True):
+            logging.info(f"Skipping disabled source: {name}")
+            continue
+        
         output_path = os.path.join(data_dir, output_file)
         
-        if source_type in ["file", "json"]:  # Support for json type
+        if source_type in ["file", "json"]:
             logging.debug(f"Downloading {name} from {url}")
-            download_file(url, output_path)
+            download_file(url, output_path, force_refresh)
         elif source_type == "api":
             if name == "NVD CVE":
                 logging.debug(f"Fetching {name} from NVD API {url}")
-                download_nvd_api(url, output_path, api_key, schema_url, schema_path)
+                download_nvd_api(url, output_path, api_key, schema_url, schema_path, force_refresh)
             else:
                 logging.warning(f"API source type not supported for {name}. Only NVD CVE API is implemented.")
         else:
