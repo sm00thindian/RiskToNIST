@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from .schema import validate_json  # Changed to relative import
+from .schema import validate_json  # Relative import
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -59,12 +59,17 @@ def parse_nvd_cve(file_path, schema_path=None):
         # Validate against schema if provided
         if schema_path:
             logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
-            validate_json(data, schema_path)
+            try:
+                validate_json(data, schema_path)
+            except Exception as e:
+                logging.error(f"Schema validation failed for {file_path}: {e}")
+                return []
         
         risks = []
         for item in data.get("CVE_Items", []):
             cve_id = item.get("cve", {}).get("CVE_data_meta", {}).get("ID", "")
             if not cve_id:
+                logging.debug(f"Skipping item in {file_path}: missing CVE ID")
                 continue
             cwe_id = ""
             for problem in item.get("cve", {}).get("problemtype", {}).get("problemtype_data", []):
