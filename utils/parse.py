@@ -40,19 +40,27 @@ def parse_cisa_kev(file_path):
         logging.error(f"Failed to parse CISA KEV file {file_path}: {e}")
         return []
 
-def parse_nvd_cve(file_path):
-    """Parse NVD CVE JSON file and return a list of risks.
+def parse_nvd_cve(file_path, schema_path=None):
+    """Parse NVD CVE JSON file and return a list of risks after schema validation.
 
     Args:
         file_path (str): Path to the NVD CVE JSON file.
+        schema_path (str, optional): Path to the schema file for validation.
 
     Returns:
         list: List of risk dictionaries.
     """
+    from schema import validate_json
     try:
         logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
         with open(file_path, "r") as f:
             data = json.load(f)
+        
+        # Validate against schema if provided
+        if schema_path:
+            logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
+            validate_json(data, schema_path)
+        
         risks = []
         for item in data.get("CVE_Items", []):
             cve_id = item.get("cve", {}).get("CVE_data_meta", {}).get("ID", "")
@@ -158,7 +166,9 @@ def parse_all_datasets(data_dir, attack_mappings):
     for file_name in os.listdir(data_dir):
         if file_name.startswith("nvdcve-1.1-") and file_name.endswith(".json"):
             nvd_path = os.path.join(data_dir, file_name)
-            all_risks[f"nvd_{file_name}"] = parse_nvd_cve(nvd_path)
+            # Pass schema path for NVD CVE validation
+            schema_path = os.path.join(data_dir, "nvd_cve_schema.json")
+            all_risks[f"nvd_{file_name}"] = parse_nvd_cve(nvd_path, schema_path if os.path.exists(schema_path) else None)
     
     # Parse KEV ATT&CK Mapping
     kev_attack_path = os.path.join(data_dir, "kev_attack_mapping.json")
