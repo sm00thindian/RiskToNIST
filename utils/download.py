@@ -3,7 +3,7 @@ import os
 import requests
 import time
 import json
-from schema import download_schema, validate_json
+from .schema import download_schema, validate_json  # Changed to relative import
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
