@@ -2,20 +2,14 @@ import json
 import logging
 import os
 from datetime import datetime
-from .schema import validate_json  # Relative import
+from .schema import validate_json
+import ijson
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def parse_cisa_kev(file_path):
-    """Parse CISA KEV CSV file and return a list of risks.
-
-    Args:
-        file_path (str): Path to the CISA KEV CSV file.
-
-    Returns:
-        list: List of risk dictionaries.
-    """
+    """Parse CISA KEV CSV file and return a list of risks."""
     import pandas as pd
     try:
         logging.debug(f"Attempting to parse CISA KEV file: {file_path}")
@@ -26,10 +20,10 @@ def parse_cisa_kev(file_path):
             cve_id = row.get("cveID", "")
             if not cve_id:
                 continue
-            cwe_id = ""  # CISA KEV does not provide CWE
+            cwe_id = ""
             risks.append({
-                "mitigating_controls": ["SI-2", "RA-5", "SC-7"],  # Default controls
-                "exploitation_score": 10.0,  # High score for known exploited
+                "mitigating_controls": ["SI-2", "RA-5", "SC-7"],
+                "exploitation_score": 10.0,
                 "impact_score": 10.0,
                 "cwe": cwe_id,
                 "cve_id": cve_id,
@@ -42,21 +36,12 @@ def parse_cisa_kev(file_path):
         return []
 
 def parse_nvd_cve(file_path, schema_path=None):
-    """Parse NVD CVE JSON file and return a list of risks after schema validation.
-
-    Args:
-        file_path (str): Path to the NVD CVE JSON file.
-        schema_path (str, optional): Path to the schema file for validation.
-
-    Returns:
-        list: List of risk dictionaries.
-    """
+    """Parse NVD CVE JSON file and return a list of risks after schema validation."""
     try:
         logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
         with open(file_path, "r") as f:
             data = json.load(f)
         
-        # Validate against schema if provided
         if schema_path:
             logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
             if not validate_json(data, schema_path, skip_on_failure=True):
@@ -69,7 +54,7 @@ def parse_nvd_cve(file_path, schema_path=None):
         logging.info(f"Parsing {total_items} items in {file_path}")
 
         for i, item in enumerate(items, 1):
-            if i % 1000 == 0:
+            if i % 100 == 0:  # Reduced interval for frequent updates
                 logging.info(f"Processed {i}/{total_items} items in {file_path}")
             cve_data = item.get("cve") if "CVE_Items" in data else item
             cve_id = cve_data.get("id", "")
@@ -105,15 +90,7 @@ def parse_nvd_cve(file_path, schema_path=None):
         return []
 
 def parse_kev_attack_mapping(json_path, attack_mappings):
-    """Parse KEV to ATT&CK mapping JSON file and return a list of risks.
-
-    Args:
-        json_path (str): Path to the KEV to ATT&CK mapping JSON file.
-        attack_mappings (dict): Dictionary of ATT&CK to NIST control mappings.
-
-    Returns:
-        list: List of risk dictionaries.
-    """
+    """Parse KEV to ATT&CK mapping JSON file and return a list of risks."""
     try:
         logging.debug(f"Attempting to parse KEV ATT&CK mapping file: {json_path}")
         with open(json_path, "r") as f:
@@ -160,35 +137,23 @@ def parse_kev_attack_mapping(json_path, attack_mappings):
         return []
 
 def parse_all_datasets(data_dir, attack_mappings):
-    """Parse all datasets and return a dictionary of risks by source.
-
-    Args:
-        data_dir (str): Directory containing data files.
-        attack_mappings (dict): Dictionary of ATT&CK to NIST control mappings.
-
-    Returns:
-        dict: Dictionary with source names as keys and lists of risks as values.
-    """
+    """Parse all datasets and return a dictionary of risks by source."""
     all_risks = {}
     
-    # Parse CISA KEV
     cisa_kev_path = os.path.join(data_dir, "cisa_kev.csv")
     if os.path.exists(cisa_kev_path):
         all_risks["cisa_kev"] = parse_cisa_kev(cisa_kev_path)
     
-    # Parse NVD CVE
     for file_name in os.listdir(data_dir):
         if file_name.startswith("nvdcve-1.1-") and file_name.endswith(".json"):
             nvd_path = os.path.join(data_dir, file_name)
             schema_path = os.path.join(data_dir, "nvd_cve_schema.json")
             all_risks[f"nvd_{file_name}"] = parse_nvd_cve(nvd_path, schema_path if os.path.exists(schema_path) else None)
     
-    # Parse KEV ATT&CK Mapping
     kev_attack_path = os.path.join(data_dir, "kev_attack_mapping.json")
     if os.path.exists(kev_attack_path):
         all_risks["kev_attack"] = parse_kev_attack_mapping(kev_attack_path, attack_mappings)
     
-    # Fallback data
     fallback_risks = [
         {"mitigating_controls": ["AC-2"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": "", "cve_id": "", "risk_context": "Default access control risk"},
         {"mitigating_controls": ["AT-2"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": "", "cve_id": "", "risk_context": "Training deficiency risk"},
