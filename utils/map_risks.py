@@ -4,7 +4,7 @@ import os
 from collections import defaultdict
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_attack_mappings(data_dir):
     """Load ATT&CK to NIST control mappings.
@@ -58,7 +58,7 @@ def map_risks_to_controls(all_risks, data_dir):
         "applicability": 7.0,
         "total_score": 0.0,
         "title": "",
-        "family_title": "",
+        "family_title": "Unknown",
         "risk_contexts": []
     })
     control_details = {}
@@ -69,8 +69,11 @@ def map_risks_to_controls(all_risks, data_dir):
         try:
             with open(control_details_path, "r") as f:
                 control_details = json.load(f)
+            logging.info(f"Loaded NIST control details from {control_details_path}")
         except Exception as e:
             logging.error(f"Failed to load NIST control details: {e}")
+    else:
+        logging.warning(f"NIST control details file {control_details_path} not found, using default values")
     
     for source, risks in all_risks.items():
         for risk in risks:
@@ -95,7 +98,9 @@ def map_risks_to_controls(all_risks, data_dir):
                 # Set control details
                 details = control_details.get(normalized_id, {})
                 controls[normalized_id]["title"] = details.get("title", normalized_id)
-                controls[normalized_id]["family_title"] = details.get("family_title", "")
+                controls[normalized_id]["family_title"] = details.get("family_title", "Unknown")
+                if not details.get("family_title"):
+                    logging.debug(f"No family_title found for control {normalized_id}, defaulting to 'Unknown'")
     
     return controls, control_details
 
