@@ -6,6 +6,10 @@ import json
 import jsonschema
 import urllib.request
 import ssl
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def download_schema(schema_url, schema_path):
     """Download the schema if not present, bypassing SSL verification if needed.
@@ -21,19 +25,22 @@ def download_schema(schema_url, schema_path):
             response.raise_for_status()
             with open(schema_path, "wb") as f:
                 f.write(response.content)
-            print(f"Downloaded schema to {schema_path}")
+            logging.info(f"Downloaded schema to {schema_path}")
         except requests.RequestException as e:
-            print(f"Failed to download schema with requests: {e}")
+            logging.error(f"Failed to download schema with requests: {e}")
             try:
                 # Fallback to urllib with unverified SSL context
                 context = ssl._create_unverified_context()
                 with urllib.request.urlopen(schema_url, context=context, timeout=10) as response:
                     with open(schema_path, "wb") as f:
                         f.write(response.read())
-                print(f"Downloaded schema to {schema_path} (unverified SSL)")
+                logging.info(f"Downloaded schema to {schema_path} (unverified SSL)")
             except urllib.error.URLError as e:
-                print(f"Failed to download schema: {e}")
+                logging.error(f"Failed to download schema: {e}")
                 raise
+        except Exception as e:
+            logging.error(f"Unexpected error downloading schema: {e}")
+            raise
 
 def validate_json(json_data, schema_path):
     """Validate JSON data against the schema, with fallback if validation fails.
@@ -43,13 +50,20 @@ def validate_json(json_data, schema_path):
         schema_path (str): Path to the schema file.
     """
     if not os.path.exists(schema_path):
-        print(f"Warning: Schema file {schema_path} not found, skipping validation.")
+        logging.warning(f"Schema file {schema_path} not found, skipping validation.")
         return
     try:
         with open(schema_path, "r") as f:
             schema = json.load(f)
         jsonschema.validate(instance=json_data, schema=schema)
-        print(f"JSON validated successfully against {schema_path}")
-    except (jsonschema.exceptions.ValidationError, jsonschema.exceptions.SchemaError, jsonschema.exceptions._WrappedReferencingError) as e:
-        print(f"Warning: JSON validation failed: {e}")
-        print("Continuing without validation...")
+        logging.info(f"JSON validated successfully against {schema_path}")
+    except jsonschema.exceptions.ValidationError as e:
+        logging.warning(f"JSON validation failed: {e.message} at {e.json_path}")
+        logging.debug(f"Validation error details: {str(e)}")
+    except jsonschema.exceptions.SchemaError as e:
+        logging.error(f"Schema error in {schema_path}: {e.message}")
+        logging.debug(f"Schema error details: {str(e)}")
+    except jsonschema.exceptions._WrappedReferencingError as e:
+        logging.error(f"Schema reference error in {schema_path}: {str(e)}")
+    except Exception as e:
+        logging.error(f"Unexpected error during JSON validation: {str(e)}")
