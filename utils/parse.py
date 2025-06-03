@@ -52,9 +52,14 @@ def parse_nvd_cve(file_path, schema_path=None):
                     has_vulnerabilities = True
                 elif prefix == "CVE_Items" and event == "start_array":
                     has_cve_items = True
-                if has_vulnerabilities or has_cve_items or len(root_keys) > 0:
+                if has_vulnerabilities or has_cve_items or len(root_keys) >= 5:
                     break
         
+        # Log root structure for debugging
+        logging.debug(f"JSON root keys: {root_keys}")
+        if not has_vulnerabilities and not has_cve_items:
+            logging.warning(f"No vulnerabilities or CVE_Items arrays found in {file_path}")
+
         # Validate schema
         with open(file_path, "rb") as f:
             if schema_path:
@@ -69,6 +74,7 @@ def parse_nvd_cve(file_path, schema_path=None):
             risks = []
             skipped_items = 0
             item_count = 0
+            # Use vulnerabilities.item for v2.0 format
             key = "vulnerabilities.item" if has_vulnerabilities else "CVE_Items.item"
             logging.info(f"Streaming {key} from {file_path}")
             
@@ -77,8 +83,8 @@ def parse_nvd_cve(file_path, schema_path=None):
                 if item_count % 100 == 0:
                     logging.info(f"Processed {item_count} items in {file_path}")
                 
-                # Handle v2.0 format (item is the full CVE object)
-                cve_data = item.get("cve") if has_cve_items else item
+                # NVD API v2.0: item is the CVE object
+                cve_data = item if has_vulnerabilities else item.get("cve", {})
                 cve_id = cve_data.get("id", "")
                 if not cve_id:
                     skipped_items += 1
@@ -107,7 +113,7 @@ def parse_nvd_cve(file_path, schema_path=None):
                 })
                 # Debug: Log first item structure
                 if item_count == 1:
-                    logging.debug(f"First CVE structure: {json.dumps(item, indent=2)[:500]}...")
+                    logging.debug(f"First CVE structure: {json.dumps(item, indent=2)[:1000]}...")
         
         logging.info(f"Processed {item_count} total items in {file_path}")
         if skipped_items > 0:
