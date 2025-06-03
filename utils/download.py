@@ -65,8 +65,8 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             download_schema(schema_url, schema_path)
         
         headers = {"apiKey": api_key} if api_key else {}
-        # Date range: January 1, 2025 to May 31, 2025
-        start_date = datetime(2025, 1, 1)
+        # Date range: November 1, 2024 to May 31, 2025
+        start_date = datetime(2024, 11, 1)
         end_date = datetime(2025, 5, 31, 23, 59, 59, 999000)
         params = {
             "pubStartDate": start_date.strftime("%Y-%m-%dT%H:%M:%S.000-05:00"),
@@ -119,9 +119,11 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
                             all_items.extend(items)
                             total_results = data.get("totalResults", total_results)
                             logging.info(f"Fetched {len(items)} CVEs, total so far: {len(all_items)}/{total_results}")
-                            # Debug: Log first item structure
-                            if items:
-                                logging.debug(f"First CVE structure: {json.dumps(items[0], indent=2)[:500]}...")
+                            # Debug: Log response structure
+                            if attempt == 0:
+                                logging.debug(f"Response keys: {list(data.keys())}")
+                                if items:
+                                    logging.debug(f"First CVE structure: {json.dumps(items[0], indent=2)[:500]}...")
                             break
                         except requests.HTTPError as e:
                             if response.status_code == 400:
