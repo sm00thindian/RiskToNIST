@@ -3,7 +3,7 @@
 # setup.sh: Script to set up the RiskToNIST project, download datasets, and generate outputs
 # Supports macOS, Ubuntu Linux, and Amazon Linux 2
 
-# set -e  # Exit on any error
+set -e  # Exit on any error
 
 # Function to check if a command exists
 command_exists() {
@@ -79,6 +79,16 @@ if ! command_exists "$PYTHON3"; then
     exit 1
 fi
 
+# Check Python version
+PYTHON_VERSION=$("$PYTHON3" --version | awk '{print $2}')
+PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
+if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 8 ]; }; then
+    echo "Python version $PYTHON_VERSION is too old. Requires Python 3.8 or higher."
+    exit 1
+fi
+echo "Python version $PYTHON_VERSION is compatible."
+
 # Check for unzip
 if ! command_exists unzip; then
     echo "unzip is not installed. Please install it (e.g., via $PKG_MANAGER)."
@@ -100,7 +110,10 @@ echo "Installing Python dependencies..."
 
 pip install --upgrade pip --quiet --trusted-host pypi.org --trusted-host files.pythonhosted.org
 if [ -f "requirements.txt" ]; then
-    pip install -r requirements.txt --quiet --trusted-host pypi.org --trusted-host files.pythonhosted.org
+    pip install -r requirements.txt --quiet --trusted-host pypi.org --trusted-host files.pythonhosted.org || {
+        echo "Error: Failed to install dependencies from requirements.txt. Check Python version compatibility or network issues."
+        exit 1
+    }
 else
     echo "Error: requirements.txt not found."
     exit 1
@@ -145,9 +158,9 @@ echo "Running the RiskToNIST project to download datasets and generate outputs..
 # Check if outputs were generated
 if [ -f "outputs/controls.json" ] && [ -f "outputs/controls.html" ]; then
     echo "Outputs successfully generated in 'outputs/' directory:"
-    echo "- JSON output: outputs/controls.json"
-    echo "- HTML output: outputs/controls.html (open in a browser)"
-    echo "- Log file: outputs/run.log"
+    echo "- JSON output: controls.json"
+    echo "- HTML output: controls.html (open in a browser)"
+    echo "- Log file: run.log"
 else
     echo "Error: Failed to generate outputs. Check outputs/run.log for errors."
     exit 1
