@@ -3,11 +3,16 @@ import os
 import requests
 import time
 import json
+import hashlib
 from .schema import download_schema, validate_json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Cache directory for NVD API responses
+CACHE_DIR = os.path.join("data", "nvd_cache")
+CACHE_TTL = 86400  # Cache for 24 hours (in seconds)
 
 def download_file(url, output_path, force_refresh=False):
     """Download a file from a URL and save it to the specified path."""
@@ -29,55 +34,104 @@ def download_file(url, output_path, force_refresh=False):
     except requests.RequestException as e:
         logging.error(f"Failed to download {url}: {e}")
 
+def get_cache_path(params):
+    """Generate a cache file path based on query parameters."""
+    param_str = json.dumps(params, sort_keys=True)
+    cache_key = hashlib.sha256(param_str.encode()).hexdigest()
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    return os.path.join(CACHE_DIR, f"{cache_key}.json")
+
+def is_cache_valid(cache_path):
+    """Check if a cache file is valid and within TTL."""
+    if not os.path.exists(cache_path):
+        return False
+    file_mtime = os.path.getmtime(cache_path)
+    current_time = time.time()
+    return (current_time - file_mtime) < CACHE_TTL
+
 def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path=None, force_refresh=False):
-    """Download CVE data from the NVD API, validate against schema, and save as JSON."""
+    """Download CVE data from the NVD API with caching, retries, and schema validation."""
     if os.path.exists(output_path) and not force_refresh:
         file_size = os.path.getsize(output_path)
         if file_size > 0:
             logging.info(f"File {output_path} exists and is {file_size} bytes, skipping NVD API download")
             return
         logging.warning(f"File {output_path} exists but is empty, forcing download")
+
     try:
         if schema_url and schema_path:
             logging.debug(f"Downloading schema from {schema_url}")
             download_schema(schema_url, schema_path)
         
         headers = {"apiKey": api_key} if api_key else {}
+        # Flexible date range: last 120 days to avoid 404s
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=120)
         params = {
-            "pubStartDate": "2018-01-01T00:00:00:000 UTC-05:00",
-            "pubEndDate": "2024-12-31T23:59:59:999 UTC-05:00",
-            "resultsPerPage": 200
+            "pubStartDate": start_date.strftime("%Y-%m-%dT%H:%M:%S:000 UTC-05:00"),
+            "pubEndDate": end_date.strftime("%Y-%m-%dT%H:%M:%S:999 UTC-05:00"),
+            "resultsPerPage": 2000,  # Max per NVD API v2.0
+            "startIndex": 0
         }
         all_items = []
         start_index = 0
         results_per_page = params["resultsPerPage"]
-        max_results = 2000  # Increased for more data
+        max_results = 10000  # Increased limit for comprehensive data
         total_results = 0
+        retries = 3
+        delay = 6 if api_key else 30  # Per NVD API rate limits
 
-        while True:
-            params["startIndex"] = start_index
-            logging.info(f"Fetching NVD CVEs: startIndex={start_index}, resultsPerPage={results_per_page}")
-            try:
-                response = requests.get(api_url, headers=headers, params=params, timeout=30)
-                response.raise_for_status()
-            except requests.HTTPError as e:
-                if response.status_code == 404:
-                    logging.warning(f"NVD API returned 404, no data available: {e}. Response: {response.text}")
+        cache_path = get_cache_path(params)
+        if is_cache_valid(cache_path) and not force_refresh:
+            logging.info(f"Loading cached NVD data from {cache_path}")
+            with open(cache_path, "r") as f:
+                data = json.load(f)
+            all_items = data.get("vulnerabilities", [])
+            total_results = data.get("totalResults", 0)
+        else:
+            while True:
+                params["startIndex"] = start_index
+                logging.info(f"Fetching NVD CVEs: startIndex={start_index}, resultsPerPage={results_per_page}")
+                for attempt in range(retries):
+                    try:
+                        response = requests.get(api_url, headers=headers, params=params, timeout=30)
+                        response.raise_for_status()
+                        data = response.json()
+                        items = data.get("vulnerabilities", [])
+                        all_items.extend(items)
+                        total_results = data.get("totalResults", total_results)
+                        logging.info(f"Fetched {len(items)} CVEs, total so far: {len(all_items)}/{total_results}")
+                        break
+                    except requests.HTTPError as e:
+                        if response.status_code == 404:
+                            logging.warning(f"NVD API returned 404, no data available: {e}. Response: {response.text}")
+                            return
+                        elif response.status_code == 429:
+                            logging.warning(f"Rate limit exceeded, retrying after {delay} seconds...")
+                            time.sleep(delay * (2 ** attempt))
+                        else:
+                            raise
+                    except requests.RequestException as e:
+                        logging.error(f"Request failed, retrying after {delay} seconds: {e}")
+                        time.sleep(delay * (2 ** attempt))
+                else:
+                    logging.error(f"Failed to fetch NVD data after {retries} retries")
+                    return
+
+                if len(all_items) >= total_results or not items or len(all_items) >= max_results:
                     break
-                raise
-            data = response.json()
-            items = data.get("vulnerabilities", [])
-            if not items and not all_items:
-                logging.warning(f"No vulnerabilities returned for startIndex={start_index}. Response: {data}")
-                break
-            all_items.extend(items)
-            total_results = data.get("totalResults", total_results)
-            logging.info(f"Fetched {len(items)} CVEs, total so far: {len(all_items)}/{total_results}")
+                start_index += params["startIndex"] + results_per_page
+                time.sleep(delay)
 
-            if len(all_items) >= total_results or not items or len(all_items) >= max_results:
-                break
-            start_index += params["resultsPerPage"]
-            time.sleep(6)
+            # Cache the response
+            cache_data = {
+                "vulnerabilities": all_items,
+                "totalResults": total_results,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            with open(cache_path, "w") as f:
+                json.dump(cache_data, f)
+            logging.info(f"Cached NVD data to {cache_path}")
 
         if not all_items:
             logging.error(f"No CVEs retrieved from NVD API for {api_url}. Saving empty dataset.")
@@ -100,8 +154,6 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
         with open(output_path, "w") as f:
             json.dump(nvd_data, f)
         logging.info(f"Successfully downloaded {len(all_items)} CVEs from NVD API to {output_path}")
-    except requests.RequestException as e:
-        logging.error(f"Failed to download from NVD API {api_url}: {e}")
     except Exception as e:
         logging.error(f"Error processing NVD API data: {e}")
 
