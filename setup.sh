@@ -1,5 +1,7 @@
 #!/bin/bash
-# setup.sh: Script to fully set up the RiskToNIST project, download datasets, and generate outputs
+
+# setup.sh: Script to set up the RiskToNIST project, download datasets, and generate outputs
+# Supports macOS and Ubuntu Linux
 
 set -e  # Exit on any error
 
@@ -8,21 +10,62 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Check system dependencies
 echo "Checking system dependencies..."
-if ! command_exists python3; then
-    echo "Error: Python 3 is not installed. Please install it (e.g., via Homebrew: 'brew install python3')."
-    exit 1
-fi
-if ! command_exists unzip; then
-    echo "Error: unzip is not installed. Please install it (e.g., via Homebrew: 'brew install unzip')."
+
+# Detect operating system
+OS=$(uname -s)
+case "$OS" in
+    Darwin)  # macOS
+        PKG_MANAGER="brew"
+        PYTHON3="python3"
+        ;;
+    Linux)  # Ubuntu Linux
+        PKG_MANAGER="apt"
+        PYTHON3="python3"
+        ;;
+    *)
+        echo "Unsupported OS: $OS. This script supports macOS and Ubuntu Linux."
+        exit 1
+        ;;
+esac
+
+# Check for package manager
+if ! command_exists "$PKG_MANAGER"; then
+    echo "$PKG_MANAGER is not installed."
+    if [ "$PKG_MANAGER" = "brew" ]; then
+        echo "Install Homebrew from https://brew.sh and try again."
+    elif [ "$PKG_MANAGER" = "apt" ]; then
+        echo "Ensure apt is available (should be pre-installed on Ubuntu)."
+    fi
     exit 1
 fi
 
-# Create virtual environment if it doesn't exist
+# Install system dependencies
+if [ "$PKG_MANAGER" = "brew" ]; then
+    echo "Installing macOS dependencies..."
+    brew install python3 unzip || true  # Ignore if already installed
+elif [ "$PKG_MANAGER" = "apt" ]; then
+    echo "Installing Ubuntu dependencies..."
+    sudo apt update
+    sudo apt install -y python3 python3-venv python3-dev unzip
+fi
+
+# Check for Python3
+if ! command_exists "$PYTHON3"; then
+    echo "Python3 is not installed. Please install Python3 and try again."
+    exit 1
+fi
+
+# Check for unzip
+if ! command_exists unzip; then
+    echo "unzip is not installed. Please install it (e.g., via $PKG_MANAGER)."
+    exit 1
+fi
+
 echo "Setting up virtual environment..."
+
 if [ ! -d "venv" ]; then
-    python3 -m venv venv
+    "$PYTHON3" -m venv venv
 else
     echo "Virtual environment already exists, skipping creation."
 fi
@@ -30,8 +73,8 @@ fi
 # Activate virtual environment
 source venv/bin/activate
 
-# Upgrade pip and install dependencies
 echo "Installing Python dependencies..."
+
 pip install --upgrade pip --quiet --trusted-host pypi.org --trusted-host files.pythonhosted.org
 if [ -f "requirements.txt" ]; then
     pip install -r requirements.txt --quiet --trusted-host pypi.org --trusted-host files.pythonhosted.org
@@ -40,26 +83,27 @@ else
     exit 1
 fi
 
-# Create required directories
 echo "Creating directory structure..."
+
 mkdir -p data mappings outputs templates
 
-# Verify main.py exists
+echo "Verifying main.py exists..."
+
 if [ ! -f "main.py" ]; then
     echo "Error: main.py not found in the project root."
     exit 1
 fi
 
-# Generate nist_controls.json from OSCAL catalog
 echo "Generating nist_controls.json from NIST SP 800-53 catalog..."
+
 python3 utils/generate_nist_controls.py >> outputs/run.log 2>&1
 if [ ! -f "data/nist_controls.json" ]; then
     echo "Error: Failed to generate nist_controls.json. Check outputs/run.log for errors."
     exit 1
 fi
 
-# Download datasets and generate outputs with bash-based timeout
 echo "Running the RiskToNIST project to download datasets and generate outputs..."
+
 {
     python3 main.py 2>&1 | tee -a outputs/run.log &
     pid=$!
