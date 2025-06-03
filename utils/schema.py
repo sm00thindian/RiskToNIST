@@ -70,6 +70,18 @@ def validate_json(json_data, schema_path, skip_on_failure=False):
         # Patch schema to include CVSS v2.0
         schema["$defs"] = schema.get("$defs", {})
         schema["$defs"]["cvss-v2.0"] = CVSS_V2_SCHEMA
+        # Remove external $ref to CVSS v2.0
+        def remove_ref(obj):
+            if isinstance(obj, dict):
+                if "$ref" in obj and "cvss-v2.0.json" in obj["$ref"]:
+                    obj.pop("$ref")
+                    obj.update(CVSS_V2_SCHEMA)
+                for key, value in obj.items():
+                    remove_ref(value)
+            elif isinstance(obj, list):
+                for item in obj:
+                    remove_ref(item)
+        remove_ref(schema)
         jsonschema.validate(instance=json_data, schema=schema)
         logging.info(f"JSON validated successfully against {schema_path}")
         return True
