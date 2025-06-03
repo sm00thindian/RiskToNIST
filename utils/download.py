@@ -6,6 +6,7 @@ import json
 import hashlib
 from .schema import download_schema, validate_json
 from datetime import datetime, timedelta
+from urllib.parse import quote
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -64,19 +65,19 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             download_schema(schema_url, schema_path)
         
         headers = {"apiKey": api_key} if api_key else {}
-        # Flexible date range: last 120 days to avoid 404s
+        # Date range: last 30 days to avoid invalid future dates
         end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=120)
+        start_date = end_date - timedelta(days=30)
         params = {
-            "pubStartDate": start_date.strftime("%Y-%m-%dT%H:%M:%S:000 UTC-05:00"),
-            "pubEndDate": end_date.strftime("%Y-%m-%dT%H:%M:%S:999 UTC-05:00"),
+            "pubStartDate": start_date.strftime("%Y-%m-%dT%H:%M:%S.000-05:00"),
+            "pubEndDate": end_date.strftime("%Y-%m-%dT%H:%M:%S.999-05:00"),
             "resultsPerPage": 2000,  # Max per NVD API v2.0
             "startIndex": 0
         }
         all_items = []
         start_index = 0
         results_per_page = params["resultsPerPage"]
-        max_results = 10000  # Increased limit for comprehensive data
+        max_results = 10000  # Comprehensive data
         total_results = 0
         retries = 3
         delay = 6 if api_key else 30  # Per NVD API rate limits
@@ -91,10 +92,12 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
         else:
             while True:
                 params["startIndex"] = start_index
-                logging.info(f"Fetching NVD CVEs: startIndex={start_index}, resultsPerPage={results_per_page}")
+                # URL-encode date parameters
+                encoded_params = {k: quote(v) if k in ["pubStartDate", "pubEndDate"] else v for k, v in params.items()}
+                logging.info(f"Fetching NVD CVEs: startIndex={start_index}, resultsPerPage={results_per_page}, params={encoded_params}")
                 for attempt in range(retries):
                     try:
-                        response = requests.get(api_url, headers=headers, params=params, timeout=30)
+                        response = requests.get(api_url, headers=headers, params=encoded_params, timeout=30)
                         response.raise_for_status()
                         data = response.json()
                         items = data.get("vulnerabilities", [])
@@ -103,7 +106,10 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
                         logging.info(f"Fetched {len(items)} CVEs, total so far: {len(all_items)}/{total_results}")
                         break
                     except requests.HTTPError as e:
-                        if response.status_code == 404:
+                        if response.status_code == 400:
+                            logging.error(f"Invalid request (e.g., date format): {e}. Response: {response.text}")
+                            return
+                        elif response.status_code == 404:
                             logging.warning(f"NVD API returned 404, no data available: {e}. Response: {response.text}")
                             return
                         elif response.status_code == 429:
@@ -142,7 +148,7 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             "totalResults": min(total_results, len(all_items)),
             "format": "NVD_CVE",
             "version": "2.0",
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000"),
+            "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "vulnerabilities": all_items
         }
         
