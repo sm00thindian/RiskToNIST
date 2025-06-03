@@ -23,8 +23,8 @@ def parse_cisa_kev(file_path):
             cwe_id = ""
             risks.append({
                 "mitigating_controls": ["SI-2", "RA-5", "SC-7"],
-                "exploitation_score": 10.0,
-                "impact_score": 10.0,
+                "exploitation_score": 9.0,  # Reduced to balance with KEV ATT&CK
+                "impact_score": 9.0,  # Reduced to balance with KEV ATT&CK
                 "cwe": cwe_id,
                 "cve_id": cve_id,
                 "risk_context": f"CISA KEV: {row.get('vulnerabilityName', '')}"
@@ -56,7 +56,7 @@ def parse_nvd_cve(file_path, schema_path=None):
         with open(file_path, "rb") as f:
             if schema_path:
                 logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
-                data = json.load(f)  # Load for validation
+                data = json.load(f)
                 if not validate_json(data, schema_path, skip_on_failure=True):
                     logging.warning(f"Continuing parsing {file_path} despite schema validation failure")
                 f.seek(0)
