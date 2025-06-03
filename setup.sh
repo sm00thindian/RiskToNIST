@@ -68,9 +68,9 @@ elif [ "$PKG_MANAGER" = "apt" ]; then
 elif [ "$PKG_MANAGER" = "yum" ]; then
     echo "Installing Amazon Linux 2 dependencies..."
     sudo yum update -y
-    # Install Python 3.8 for dependency compatibility
+    # Install Python 3.8 and development tools
     sudo amazon-linux-extras enable python3.8
-    sudo yum install -y python3.8 python3.8-devel python3-pip unzip
+    sudo yum install -y python3.8 python3-devel gcc libffi-devel python3-pip unzip
 fi
 
 # Check for Python3
@@ -108,10 +108,11 @@ source venv/bin/activate
 
 echo "Installing Python dependencies..."
 
-pip install --upgrade pip --quiet --trusted-host pypi.org --trusted-host files.pythonhosted.org
+pip install --upgrade pip
 if [ -f "requirements.txt" ]; then
-    pip install -r requirements.txt --quiet --trusted-host pypi.org --trusted-host files.pythonhosted.org || {
-        echo "Error: Failed to install dependencies from requirements.txt. Check Python version compatibility or network issues."
+    pip install -r requirements.txt || {
+        echo "Error: Failed to install dependencies from requirements.txt. Check Python version compatibility, network issues, or PyPI availability."
+        echo "Try running: pip install -r requirements.txt --verbose for detailed output."
         exit 1
     }
 else
@@ -158,9 +159,9 @@ echo "Running the RiskToNIST project to download datasets and generate outputs..
 # Check if outputs were generated
 if [ -f "outputs/controls.json" ] && [ -f "outputs/controls.html" ]; then
     echo "Outputs successfully generated in 'outputs/' directory:"
-    echo "- JSON output: controls.json"
-    echo "- HTML output: controls.html (open in a browser)"
-    echo "- Log file: run.log"
+    echo "- JSON output: outputs/controls.json"
+    echo "- HTML output: outputs/controls.html (open in a browser)"
+    echo "- Log file: outputs/run.log"
 else
     echo "Error: Failed to generate outputs. Check outputs/run.log for errors."
     exit 1
