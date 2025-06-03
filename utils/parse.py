@@ -23,8 +23,8 @@ def parse_cisa_kev(file_path):
             cwe_id = ""
             risks.append({
                 "mitigating_controls": ["SI-2", "RA-5", "SC-7"],
-                "exploitation_score": 9.0,  # Reduced to balance with KEV ATT&CK
-                "impact_score": 9.0,  # Reduced to balance with KEV ATT&CK
+                "exploitation_score": 9.0,
+                "impact_score": 9.0,
                 "cwe": cwe_id,
                 "cve_id": cve_id,
                 "risk_context": f"CISA KEV: {row.get('vulnerabilityName', '')}"
@@ -44,12 +44,15 @@ def parse_nvd_cve(file_path, schema_path=None):
             parser = ijson.parse(f)
             has_vulnerabilities = False
             has_cve_items = False
+            root_keys = []
             for prefix, event, value in parser:
+                if event == "map_key" and not prefix:
+                    root_keys.append(value)
                 if prefix == "vulnerabilities" and event == "start_array":
                     has_vulnerabilities = True
                 elif prefix == "CVE_Items" and event == "start_array":
                     has_cve_items = True
-                if has_vulnerabilities or has_cve_items:
+                if has_vulnerabilities or has_cve_items or len(root_keys) > 0:
                     break
         
         # Validate schema
@@ -88,7 +91,7 @@ def parse_nvd_cve(file_path, schema_path=None):
                     if cwe_id:
                         break
                 cvss_v3 = cve_data.get("metrics", {}).get("cvssMetricV31", [{}])[0].get("cvssData", {})
-                base_score = cvss_v3.get("baseScore", 0.0)
+                base_score = float(cvss_v3.get("baseScore", 0.0))  # Ensure float
                 description = cve_data.get("descriptions", [{}])[0].get("value", "")
                 risks.append({
                     "mitigating_controls": ["SI-2", "RA-5"],
@@ -103,6 +106,8 @@ def parse_nvd_cve(file_path, schema_path=None):
         if skipped_items > 0:
             logging.info(f"Skipped {skipped_items} items in {file_path} due to missing CVE ID")
         logging.info(f"Parsed {len(risks)} risks from {file_path}")
+        if len(risks) == 0 and not has_vulnerabilities and not has_cve_items:
+            logging.warning(f"No valid vulnerabilities or CVE_Items found in {file_path}. Root keys: {root_keys}")
         return risks
     except Exception as e:
         logging.error(f"Failed to parse NVD CVE file {file_path}: {e}")
@@ -140,7 +145,7 @@ def parse_kev_attack_mapping(json_path, attack_mappings):
             if not controls:
                 logging.warning(f"No NIST controls mapped for technique {technique_id} in CVE {cve_id}")
                 controls = ["SI-2"]
-            score = capability_scores.get(capability_group, 7.0)
+            score = float(capability_scores.get(capability_group, 7.0))  # Ensure float
             risks.append({
                 "mitigating_controls": controls,
                 "exploitation_score": score,
