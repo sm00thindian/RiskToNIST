@@ -12,8 +12,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def download_file(url, output_path, force_refresh=False):
     """Download a file from a URL and save it to the specified path."""
     if os.path.exists(output_path) and not force_refresh:
-        logging.info(f"File {output_path} already exists, skipping download")
-        return
+        file_size = os.path.getsize(output_path)
+        if file_size > 0:
+            logging.info(f"File {output_path} exists and is {file_size} bytes, skipping download")
+            return
+        logging.warning(f"File {output_path} exists but is empty, forcing download")
     try:
         response = requests.get(url, stream=True, timeout=30)
         response.raise_for_status()
@@ -29,8 +32,11 @@ def download_file(url, output_path, force_refresh=False):
 def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path=None, force_refresh=False):
     """Download CVE data from the NVD API, validate against schema, and save as JSON."""
     if os.path.exists(output_path) and not force_refresh:
-        logging.info(f"File {output_path} already exists, skipping NVD API download")
-        return
+        file_size = os.path.getsize(output_path)
+        if file_size > 0:
+            logging.info(f"File {output_path} exists and is {file_size} bytes, skipping NVD API download")
+            return
+        logging.warning(f"File {output_path} exists but is empty, forcing download")
     try:
         if schema_url and schema_path:
             logging.debug(f"Downloading schema from {schema_url}")
@@ -38,7 +44,7 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
         
         headers = {"apiKey": api_key} if api_key else {}
         params = {
-            "pubStartDate": "2023-01-01T00:00:00:000 UTC-05:00",
+            "pubStartDate": "2020-01-01T00:00:00:000 UTC-05:00",
             "pubEndDate": "2024-12-31T23:59:59:999 UTC-05:00",
             "resultsPerPage": 200
         }
@@ -46,7 +52,7 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
         start_index = 0
         results_per_page = params["resultsPerPage"]
         max_results = 1000  # Limit for testing
-        total_results = 0  # Initialize to avoid reference error
+        total_results = 0
 
         while True:
             params["startIndex"] = start_index
@@ -56,7 +62,7 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
                 response.raise_for_status()
             except requests.HTTPError as e:
                 if response.status_code == 404:
-                    logging.warning(f"NVD API returned 404, no data available: {e}")
+                    logging.warning(f"NVD API returned 404, no data available: {e}. Response: {response.text}")
                     break
                 raise
             data = response.json()
