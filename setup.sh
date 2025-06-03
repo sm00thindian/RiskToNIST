@@ -63,14 +63,13 @@ if [ "$PKG_MANAGER" = "brew" ]; then
     brew install python3 unzip || true  # Ignore if already installed
 elif [ "$PKG_MANAGER" = "apt" ]; then
     echo "Installing Ubuntu dependencies..."
-    sudo apt update
-    sudo apt install -y python3 python3-venv python3-dev unzip
+    sudo apt update -yq
+    sudo apt install -yq python3 python3-venv python3-dev unzip
 elif [ "$PKG_MANAGER" = "yum" ]; then
     echo "Installing Amazon Linux 2 dependencies..."
-    sudo yum update -y
-    # Install Python 3.8 and development tools
-    sudo amazon-linux-extras enable python3.8
-    sudo yum install -y python3.8 python3-devel gcc libffi-devel python3-pip unzip
+    sudo yum update -yq
+    sudo amazon-linux-extras enable python3.8 >/dev/null 2>&1
+    sudo yum install -yq python3.8 python3-devel gcc libffi-devel python3-pip unzip
 fi
 
 # Check for Python3
@@ -87,7 +86,7 @@ if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR"
     echo "Python version $PYTHON_VERSION is too old. Requires Python 3.8 or higher."
     exit 1
 fi
-echo "Python version $PYTHON_VERSION is compatible."
+echo "Python $PYTHON_VERSION detected."
 
 # Check for unzip
 if ! command_exists unzip; then
@@ -100,7 +99,7 @@ echo "Setting up virtual environment..."
 if [ ! -d "venv" ]; then
     "$PYTHON3" -m venv venv
 else
-    echo "Virtual environment already exists, skipping creation."
+    echo "Virtual environment already exists."
 fi
 
 # Activate virtual environment
@@ -108,44 +107,30 @@ source venv/bin/activate
 
 echo "Installing Python dependencies..."
 
-if [ "$OS_NAME" = "amzn" ]; then
-    pip install -q --upgrade pip
-    if [ -f "requirements.txt" ]; then
-        pip install -q -r requirements.txt || {
-            echo "Error: Failed to install dependencies from requirements.txt. Check Python version compatibility, network issues, or PyPI availability."
-            echo "Try running: pip install -r requirements.txt --verbose for detailed output."
-            exit 1
-        }
-    else
-        echo "Error: requirements.txt not found."
+pip install -q --upgrade pip
+if [ -f "requirements.txt" ]; then
+    pip install -q -r requirements.txt || {
+        echo "Error: Failed to install dependencies from requirements.txt."
+        echo "Try running: pip install -r requirements.txt --verbose for details."
         exit 1
-    fi
+    }
 else
-    pip install --upgrade pip
-    if [ -f "requirements.txt" ]; then
-        pip install -r requirements.txt || {
-            echo "Error: Failed to install dependencies from requirements.txt. Check Python version compatibility, network issues, or PyPI availability."
-            echo "Try running: pip install -r requirements.txt --verbose for detailed output."
-            exit 1
-        }
-    else
-        echo "Error: requirements.txt not found."
-        exit 1
-    fi
+    echo "Error: requirements.txt not found."
+    exit 1
 fi
 
 echo "Creating directory structure..."
 
 mkdir -p data mappings outputs templates
 
-echo "Verifying main.py exists..."
+echo "Verifying main.py..."
 
 if [ ! -f "main.py" ]; then
     echo "Error: main.py not found in the project root."
     exit 1
 fi
 
-echo "Generating nist_controls.json from NIST SP 800-53 catalog..."
+echo "Generating nist_controls.json..."
 
 python3 utils/generate_nist_controls.py >> outputs/run.log 2>&1
 if [ ! -f "data/nist_controls.json" ]; then
@@ -153,14 +138,14 @@ if [ ! -f "data/nist_controls.json" ]; then
     exit 1
 fi
 
-echo "Running the RiskToNIST project to download datasets and generate outputs..."
+echo "Running RiskToNIST project..."
 
 {
     python3 main.py 2>&1 | tee -a outputs/run.log &
     pid=$!
     sleep 3600  # 60-minute timeout
     if kill -0 $pid 2>/dev/null; then
-        echo "Error: main.py timed out after 60 minutes. Killing process." | tee -a outputs/run.log
+        echo "Error: main.py timed out after 60 minutes." | tee -a outputs/run.log
         kill $pid
         exit 1
     fi
@@ -172,17 +157,14 @@ echo "Running the RiskToNIST project to download datasets and generate outputs..
 
 # Check if outputs were generated
 if [ -f "outputs/controls.json" ] && [ -f "outputs/controls.html" ]; then
-    echo "Outputs successfully generated in 'outputs/' directory:"
-    echo "- JSON output: outputs/controls.json"
-    echo "- HTML output: outputs/controls.html (open in a browser)"
-    echo "- Log file: outputs/run.log"
+    echo "Setup complete. Outputs generated in 'outputs/':"
+    echo "- JSON: outputs/controls.json"
+    echo "- HTML: outputs/controls.html (open in a browser)"
+    echo "- Log: outputs/run.log"
+    echo "To work in the virtual environment, run: source venv/bin/activate"
+    echo "To re-run the project, use: python3 main.py | tee -a outputs/run.log"
+    echo "To regenerate nist_controls.json, use: python3 utils/generate_nist_controls.py >> outputs/run.log 2>&1"
 else
     echo "Error: Failed to generate outputs. Check outputs/run.log for errors."
     exit 1
 fi
-
-echo "Setup complete! To work in the virtual environment, run:"
-echo "source venv/bin/activate"
-echo "To re-run the project, use: python3 main.py | tee -a outputs/run.log"
-echo "To regenerate nist_controls.json, use: python3 utils/generate_nist_controls.py >> outputs/run.log 2>&1"
-echo "Check outputs/run.log for detailed logs."
