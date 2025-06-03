@@ -45,7 +45,7 @@
       "url": "https://services.nvd.nist.gov/rest/json/cves/2.0",
       "type": "json_api",
       "enabled": true,
-      "output": "nvdcve-1.1-2024.json",
+      "output": "nvdcve-1.1-2023-2024.json",
       "schema_url": "https://csrc.nist.gov/schema/nvd/api/2.0/cve_api_json_2.0.schema",
       "schema_path": "data/nvd_cve_schema.json"
     },
