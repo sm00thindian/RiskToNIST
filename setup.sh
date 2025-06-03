@@ -3,7 +3,7 @@
 # setup.sh: Script to set up the RiskToNIST project, download datasets, and generate outputs
 # Supports macOS, Ubuntu Linux, and Amazon Linux 2
 
-set -e  # Exit on any error
+# set -e  # Exit on any error
 
 # Function to check if a command exists
 command_exists() {
