@@ -108,16 +108,30 @@ source venv/bin/activate
 
 echo "Installing Python dependencies..."
 
-pip install --upgrade pip
-if [ -f "requirements.txt" ]; then
-    pip install -r requirements.txt || {
-        echo "Error: Failed to install dependencies from requirements.txt. Check Python version compatibility, network issues, or PyPI availability."
-        echo "Try running: pip install -r requirements.txt --verbose for detailed output."
+if [ "$OS_NAME" = "amzn" ]; then
+    pip install -q --upgrade pip
+    if [ -f "requirements.txt" ]; then
+        pip install -q -r requirements.txt || {
+            echo "Error: Failed to install dependencies from requirements.txt. Check Python version compatibility, network issues, or PyPI availability."
+            echo "Try running: pip install -r requirements.txt --verbose for detailed output."
+            exit 1
+        }
+    else
+        echo "Error: requirements.txt not found."
         exit 1
-    }
+    fi
 else
-    echo "Error: requirements.txt not found."
-    exit 1
+    pip install --upgrade pip
+    if [ -f "requirements.txt" ]; then
+        pip install -r requirements.txt || {
+            echo "Error: Failed to install dependencies from requirements.txt. Check Python version compatibility, network issues, or PyPI availability."
+            echo "Try running: pip install -r requirements.txt --verbose for detailed output."
+            exit 1
+        }
+    else
+        echo "Error: requirements.txt not found."
+        exit 1
+    fi
 fi
 
 echo "Creating directory structure..."
