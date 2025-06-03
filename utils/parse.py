@@ -173,19 +173,4 @@ def parse_all_datasets(data_dir, attack_mappings):
     if os.path.exists(kev_attack_path):
         all_risks["kev_attack"] = parse_kev_attack_mapping(kev_attack_path, attack_mappings)
     
-    fallback_risks = [
-        {"mitigating_controls": ["AC-2"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": "", "cve_id": "", "risk_context": "Default access control risk"},
-        {"mitigating_controls": ["AT-2"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": "", "cve_id": "", "risk_context": "Training deficiency risk"},
-        {"mitigating_controls": ["CM-6"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": "", "cve_id": "", "risk_context": "Configuration management risk"},
-        {"mitigating_controls": ["IA-2"], "exploitation_score": 7.0, "impact_score": 7.0, "cwe": "", "cwe_id": "", "risk_context": "Identification and authentication risk"},
-        {"mitigating_controls": ["IA-5"], "exploitation_score": 7.0, "impact_score": 7.0, "cwe": "", "cve_id": "", "risk_context": "Authentication management risk"},
-        {"mitigating_controls": ["RA-5"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": "", "cve_id": "", "risk_context": "Vulnerability scanning risk"},
-        {"mitigating_controls": ["SC-7"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": "", "cve_id": "", "risk_context": "Boundary protection risk"},
-        {"mitigating_controls": ["SC-8"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": "", "cve_id": "", "risk_context": "Transmission confidentiality risk"},
-        {"mitigating_controls": ["SI-2"], "exploitation_score": 8.0, "impact_score": 8.0, "cwe": "", "cve_id": "", "risk_context": "Flaw remediation risk"},
-        {"mitigating_controls": ["SI-10"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": "", "cve_id": "", "risk_context": "Input validation risk"},
-        {"mitigating_controls": ["SI-16"], "exploitation_score": 6.0, "impact_score": 6.0, "cwe": "", "cve_id": "", "risk_context": "Memory protection risk"}
-    ]
-    all_risks["fallback"] = fallback_risks
-    
     return all_risks
