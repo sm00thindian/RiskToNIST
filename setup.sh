@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # setup.sh: Script to set up the RiskToNIST project, download datasets, and generate outputs
-# Supports macOS and Ubuntu Linux
+# Supports macOS, Ubuntu Linux, and Amazon Linux 2
 
 set -e  # Exit on any error
 
@@ -13,18 +13,33 @@ command_exists() {
 echo "Checking system dependencies..."
 
 # Detect operating system
-OS=$(uname -s)
-case "$OS" in
-    Darwin)  # macOS
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS_NAME="${ID}"
+    OS_VERSION="${VERSION_ID}"
+elif [ "$(uname -s)" = "Darwin" ]; then
+    OS_NAME="darwin"
+else
+    echo "Unable to detect operating system."
+    exit 1
+fi
+
+# Set package manager and Python command based on OS
+case "$OS_NAME" in
+    darwin)  # macOS
         PKG_MANAGER="brew"
         PYTHON3="python3"
         ;;
-    Linux)  # Ubuntu Linux
+    ubuntu)  # Ubuntu Linux
         PKG_MANAGER="apt"
         PYTHON3="python3"
         ;;
+    amzn)  # Amazon Linux 2
+        PKG_MANAGER="yum"
+        PYTHON3="python3.8"
+        ;;
     *)
-        echo "Unsupported OS: $OS. This script supports macOS and Ubuntu Linux."
+        echo "Unsupported OS: $OS_NAME. This script supports macOS, Ubuntu Linux, and Amazon Linux 2."
         exit 1
         ;;
 esac
@@ -36,6 +51,8 @@ if ! command_exists "$PKG_MANAGER"; then
         echo "Install Homebrew from https://brew.sh and try again."
     elif [ "$PKG_MANAGER" = "apt" ]; then
         echo "Ensure apt is available (should be pre-installed on Ubuntu)."
+    elif [ "$PKG_MANAGER" = "yum" ]; then
+        echo "Ensure yum is available (should be pre-installed on Amazon Linux 2)."
     fi
     exit 1
 fi
@@ -48,11 +65,17 @@ elif [ "$PKG_MANAGER" = "apt" ]; then
     echo "Installing Ubuntu dependencies..."
     sudo apt update
     sudo apt install -y python3 python3-venv python3-dev unzip
+elif [ "$PKG_MANAGER" = "yum" ]; then
+    echo "Installing Amazon Linux 2 dependencies..."
+    sudo yum update -y
+    # Install Python 3.8 for dependency compatibility
+    sudo amazon-linux-extras enable python3.8
+    sudo yum install -y python3.8 python3.8-devel python3-pip unzip
 fi
 
 # Check for Python3
 if ! command_exists "$PYTHON3"; then
-    echo "Python3 is not installed. Please install Python3 and try again."
+    echo "Python3 is not installed. Please install Python3 (version 3.8 or higher) and try again."
     exit 1
 fi
 
