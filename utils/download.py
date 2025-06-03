@@ -65,9 +65,9 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             download_schema(schema_url, schema_path)
         
         headers = {"apiKey": api_key} if api_key else {}
-        # Date range: last 30 days to avoid invalid future dates
+        # Date range: March 1, 2025 to June 3, 2025
         end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=30)
+        start_date = datetime(2025, 3, 1)
         params = {
             "pubStartDate": start_date.strftime("%Y-%m-%dT%H:%M:%S.000-05:00"),
             "pubEndDate": end_date.strftime("%Y-%m-%dT%H:%M:%S.999-05:00"),
@@ -90,44 +90,69 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             all_items = data.get("vulnerabilities", [])
             total_results = data.get("totalResults", 0)
         else:
-            while True:
-                params["startIndex"] = start_index
-                # URL-encode date parameters
-                encoded_params = {k: quote(v) if k in ["pubStartDate", "pubEndDate"] else v for k, v in params.items()}
-                logging.info(f"Fetching NVD CVEs: startIndex={start_index}, resultsPerPage={results_per_page}, params={encoded_params}")
-                for attempt in range(retries):
-                    try:
-                        response = requests.get(api_url, headers=headers, params=encoded_params, timeout=30)
-                        response.raise_for_status()
-                        data = response.json()
-                        items = data.get("vulnerabilities", [])
-                        all_items.extend(items)
-                        total_results = data.get("totalResults", total_results)
-                        logging.info(f"Fetched {len(items)} CVEs, total so far: {len(all_items)}/{total_results}")
-                        break
-                    except requests.HTTPError as e:
-                        if response.status_code == 400:
-                            logging.error(f"Invalid request (e.g., date format): {e}. Response: {response.text}")
-                            return
-                        elif response.status_code == 404:
-                            logging.warning(f"NVD API returned 404, no data available: {e}. Response: {response.text}")
-                            return
-                        elif response.status_code == 429:
-                            logging.warning(f"Rate limit exceeded, retrying after {delay} seconds...")
+            # Fallback: Try without date range if initial query fails
+            query_attempts = [
+                params,  # Date-based query
+                {"resultsPerPage": 2000, "startIndex": 0}  # No date filter
+            ]
+            success = False
+            
+            for query_params in query_attempts:
+                start_index = 0
+                all_items = []
+                total_results = 0
+                encoded_params = {
+                    k: quote(v) if k in ["pubStartDate", "pubEndDate"] else v
+                    for k, v in query_params.items()
+                }
+                logging.info(f"Attempting NVD query with params: {encoded_params}")
+                
+                while True:
+                    encoded_params["startIndex"] = start_index
+                    logging.info(f"Fetching NVD CVEs: startIndex={start_index}, resultsPerPage={results_per_page}")
+                    for attempt in range(retries):
+                        try:
+                            response = requests.get(api_url, headers=headers, params=encoded_params, timeout=10)
+                            response.raise_for_status()
+                            data = response.json()
+                            items = data.get("vulnerabilities", [])
+                            all_items.extend(items)
+                            total_results = data.get("totalResults", total_results)
+                            logging.info(f"Fetched {len(items)} CVEs, total so far: {len(all_items)}/{total_results}")
+                            break
+                        except requests.HTTPError as e:
+                            if response.status_code == 400:
+                                logging.error(f"Invalid request (e.g., date format): {e}. Response: {response.text}")
+                                break
+                            elif response.status_code == 404:
+                                logging.warning(f"NVD API returned 404: {e}. Response: {response.text}")
+                                break
+                            elif response.status_code == 429:
+                                logging.warning(f"Rate limit exceeded, retrying after {delay} seconds...")
+                                time.sleep(delay * (2 ** attempt))
+                            else:
+                                raise
+                        except requests.RequestException as e:
+                            logging.error(f"Request failed, retrying after {delay} seconds: {e}")
                             time.sleep(delay * (2 ** attempt))
-                        else:
-                            raise
-                    except requests.RequestException as e:
-                        logging.error(f"Request failed, retrying after {delay} seconds: {e}")
-                        time.sleep(delay * (2 ** attempt))
-                else:
-                    logging.error(f"Failed to fetch NVD data after {retries} retries")
-                    return
+                    else:
+                        logging.error(f"Failed to fetch NVD data after {retries} retries")
+                        break
 
-                if len(all_items) >= total_results or not items or len(all_items) >= max_results:
+                    if response.status_code in [400, 404]:
+                        break
+                    if len(all_items) >= total_results or not items or len(all_items) >= max_results:
+                        success = True
+                        break
+                    start_index += results_per_page
+                    time.sleep(delay)
+
+                if success:
                     break
-                start_index += params["startIndex"] + results_per_page
-                time.sleep(delay)
+
+            if not success:
+                logging.error(f"All NVD query attempts failed for {api_url}")
+                return
 
             # Cache the response
             cache_data = {
