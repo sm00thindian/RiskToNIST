@@ -83,8 +83,8 @@ def parse_nvd_cve(file_path, schema_path=None):
                 if item_count % 100 == 0:
                     logging.info(f"Processed {item_count} items in {file_path}")
                 
-                # NVD API v2.0: item is the CVE object
-                cve_data = item if has_vulnerabilities else item.get("cve", {})
+                # NVD API v2.0: item is the CVE object wrapped in {"cve": {...}}
+                cve_data = item.get("cve", {}) if has_vulnerabilities else item
                 cve_id = cve_data.get("id", "")
                 if not cve_id:
                     skipped_items += 1
