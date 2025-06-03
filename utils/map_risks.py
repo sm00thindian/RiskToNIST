@@ -7,14 +7,7 @@ from collections import defaultdict
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_attack_mappings(data_dir):
-    """Load ATT&CK to NIST control mappings.
-
-    Args:
-        data_dir (str): Directory containing attack_mapping.json.
-
-    Returns:
-        dict: ATT&CK to NIST control mappings.
-    """
+    """Load ATT&CK to NIST control mappings."""
     attack_mapping_path = os.path.join(data_dir, "attack_mapping.json")
     try:
         with open(attack_mapping_path, "r") as f:
@@ -26,14 +19,7 @@ def load_attack_mappings(data_dir):
         return {}
 
 def normalize_control_id(control_id):
-    """Normalize NIST control ID (e.g., AC-02 to AC-2).
-
-    Args:
-        control_id (str): Raw control ID.
-
-    Returns:
-        str: Normalized control ID.
-    """
+    """Normalize NIST control ID (e.g., AC-02 to AC-2)."""
     if not control_id:
         return control_id
     parts = control_id.split("-")
@@ -43,15 +29,7 @@ def normalize_control_id(control_id):
     return control_id
 
 def map_risks_to_controls(all_risks, data_dir):
-    """Map risks to NIST controls and compute scores.
-
-    Args:
-        all_risks (dict): Dictionary of risks by source.
-        data_dir (str): Directory containing data files.
-
-    Returns:
-        tuple: Dictionary of controls with scores, dictionary of control details.
-    """
+    """Map risks to NIST controls and compute scores."""
     controls = defaultdict(lambda: {
         "max_exploitation": 0.0,
         "max_severity": 0.0,
@@ -63,7 +41,6 @@ def map_risks_to_controls(all_risks, data_dir):
     })
     control_details = {}
     
-    # Load NIST control details
     control_details_path = os.path.join(data_dir, "nist_controls.json")
     if os.path.exists(control_details_path):
         try:
@@ -81,11 +58,11 @@ def map_risks_to_controls(all_risks, data_dir):
                 normalized_id = normalize_control_id(control_id)
                 controls[normalized_id]["max_exploitation"] = max(
                     controls[normalized_id]["max_exploitation"],
-                    risk.get("exploitation_score", 0.0)
+                    float(risk.get("exploitation_score", 0.0))  # Convert to float
                 )
                 controls[normalized_id]["max_severity"] = max(
                     controls[normalized_id]["max_severity"],
-                    risk.get("impact_score", 0.0)
+                    float(risk.get("impact_score", 0.0))  # Convert to float
                 )
                 if risk.get("risk_context"):
                     context_entry = {
@@ -95,7 +72,6 @@ def map_risks_to_controls(all_risks, data_dir):
                     }
                     if context_entry not in controls[normalized_id]["risk_contexts"]:
                         controls[normalized_id]["risk_contexts"].append(context_entry)
-                # Set control details
                 details = control_details.get(normalized_id, {})
                 controls[normalized_id]["title"] = details.get("title", normalized_id)
                 controls[normalized_id]["family_title"] = details.get("family_title", "Unknown")
@@ -105,21 +81,13 @@ def map_risks_to_controls(all_risks, data_dir):
     return controls, control_details
 
 def normalize_and_prioritize(controls, weights):
-    """Normalize and prioritize controls based on scores.
-
-    Args:
-        controls (dict): Dictionary of controls with scores.
-        weights (dict): Weights for scoring components.
-
-    Returns:
-        list: List of tuples (control_id, control_details) sorted by total_score.
-    """
+    """Normalize and prioritize controls based on scores."""
     prioritized = []
     for control_id, details in controls.items():
         total_score = (
-            weights["exploitation"] * details["max_exploitation"] +
-            weights["severity"] * details["max_severity"] +
-            weights["applicability"] * details["applicability"]
+            weights["exploitation"] * float(details["max_exploitation"]) +
+            weights["severity"] * float(details["max_severity"]) +
+            weights["applicability"] * float(details["applicability"])
         )
         details["total_score"] = total_score
         prioritized.append((control_id, details))
