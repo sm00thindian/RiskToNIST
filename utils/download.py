@@ -44,14 +44,14 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
         
         headers = {"apiKey": api_key} if api_key else {}
         params = {
-            "pubStartDate": "2020-01-01T00:00:00:000 UTC-05:00",
+            "pubStartDate": "2018-01-01T00:00:00:000 UTC-05:00",
             "pubEndDate": "2024-12-31T23:59:59:999 UTC-05:00",
             "resultsPerPage": 200
         }
         all_items = []
         start_index = 0
         results_per_page = params["resultsPerPage"]
-        max_results = 1000  # Limit for testing
+        max_results = 2000  # Increased for more data
         total_results = 0
 
         while True:
@@ -67,6 +67,9 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
                 raise
             data = response.json()
             items = data.get("vulnerabilities", [])
+            if not items and not all_items:
+                logging.warning(f"No vulnerabilities returned for startIndex={start_index}. Response: {data}")
+                break
             all_items.extend(items)
             total_results = data.get("totalResults", total_results)
             logging.info(f"Fetched {len(items)} CVEs, total so far: {len(all_items)}/{total_results}")
@@ -76,6 +79,9 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             start_index += params["resultsPerPage"]
             time.sleep(6)
 
+        if not all_items:
+            logging.error(f"No CVEs retrieved from NVD API for {api_url}. Saving empty dataset.")
+        
         nvd_data = {
             "resultsPerPage": results_per_page,
             "startIndex": 0,
