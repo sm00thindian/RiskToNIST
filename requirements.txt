@@ -5,3 +5,4 @@ jinja2==3.1.4
 jsonschema==4.23.0
 certifi==2024.8.30
 ijson==3.2.4
+cachetools==5.3.3
