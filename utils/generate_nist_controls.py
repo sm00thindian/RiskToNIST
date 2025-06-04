@@ -6,13 +6,15 @@ import requests
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Increase verbosity
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('outputs/run.log'),
-        logging.StreamHandler()  # Add console output
+        logging.StreamHandler()  # Console output
     ]
 )
+
+logging.debug("Initializing generate_nist_controls.py")
 
 def download_nist_catalog(data_dir):
     """Download NIST SP 800-53 catalog if not present."""
@@ -38,6 +40,7 @@ def download_nist_catalog(data_dir):
 def generate_nist_controls(data_dir):
     """Generate nist_controls.json from the NIST SP 800-53 OSCAL catalog."""
     try:
+        logging.debug(f"Starting generate_nist_controls with data_dir: {data_dir}")
         input_path = download_nist_catalog(data_dir)
         output_path = os.path.join(data_dir, "nist_controls.json")
         
@@ -84,5 +87,5 @@ def generate_nist_controls(data_dir):
         raise
 
 if __name__ == "__main__":
-    logging.debug("Starting generate_nist_controls.py")
+    logging.debug("Script started")
     generate_nist_controls("data")
