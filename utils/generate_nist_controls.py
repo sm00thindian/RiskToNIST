@@ -6,11 +6,11 @@ import requests
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Increase verbosity
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('outputs/run.log'),
-        logging.StreamHandler()
+        logging.StreamHandler()  # Add console output
     ]
 )
 
@@ -31,18 +31,20 @@ def download_nist_catalog(data_dir):
         except Exception as e:
             logging.error(f"Failed to download NIST catalog: {str(e)}\n{traceback.format_exc()}")
             raise
+    else:
+        logging.info(f"Using existing NIST catalog at {input_path}")
     return input_path
 
 def generate_nist_controls(data_dir):
-    """Generate nist_controls.json from the NIST SP 800-53 OSCAL catalog.
-
-    Args:
-        data_dir (str): Directory containing data files.
-    """
-    input_path = download_nist_catalog(data_dir)
-    output_path = os.path.join(data_dir, "nist_controls.json")
-    
+    """Generate nist_controls.json from the NIST SP 800-53 OSCAL catalog."""
     try:
+        input_path = download_nist_catalog(data_dir)
+        output_path = os.path.join(data_dir, "nist_controls.json")
+        
+        logging.debug(f"Checking input file: {input_path}")
+        if not os.path.exists(input_path):
+            raise FileNotFoundError(f"Input file {input_path} does not exist")
+        
         logging.info(f"Loading NIST SP 800-53 catalog from {input_path}")
         with open(input_path, "r") as f:
             catalog = json.load(f)
@@ -71,6 +73,7 @@ def generate_nist_controls(data_dir):
                         "family_title": family_title
                     }
         
+        logging.debug(f"Writing {len(controls_dict)} controls to {output_path}")
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
             json.dump(controls_dict, f, indent=2)
@@ -79,3 +82,7 @@ def generate_nist_controls(data_dir):
     except Exception as e:
         logging.error(f"Failed to generate nist_controls.json: {str(e)}\n{traceback.format_exc()}")
         raise
+
+if __name__ == "__main__":
+    logging.debug("Starting generate_nist_controls.py")
+    generate_nist_controls("data")
