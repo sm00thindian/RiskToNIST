@@ -10,6 +10,24 @@ from utils.output import write_outputs
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+def load_api_keys():
+    """Load API keys from api_keys.json and set environment variables."""
+    api_keys_path = "api_keys.json"
+    try:
+        if os.path.exists(api_keys_path):
+            with open(api_keys_path, 'r') as f:
+                api_keys = json.load(f)
+            nvd_api_key = api_keys.get('NVD_API_KEY')
+            if nvd_api_key:
+                os.environ['NVD_API_KEY'] = nvd_api_key
+                logging.info("Loaded NVD_API_KEY from api_keys.json")
+            else:
+                logging.warning("NVD_API_KEY not found in api_keys.json")
+        else:
+            logging.warning(f"api_keys.json not found at {api_keys_path}")
+    except Exception as e:
+        logging.error(f"Failed to load api_keys.json: {e}")
+
 def load_config(config_path):
     """Load configuration from a JSON file."""
     try:
@@ -32,6 +50,9 @@ def load_attack_mappings(data_dir):
 
 def main(config_path, data_dir, force_refresh=False):
     """Main function to process risk data and generate prioritized controls."""
+    # Load API keys first
+    load_api_keys()
+    
     config = load_config(config_path)
     
     logging.info("Starting dataset downloads")
