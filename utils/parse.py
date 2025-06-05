@@ -1,3 +1,4 @@
+```python
 import json
 import logging
 import os
@@ -92,43 +93,42 @@ def parse_nvd_cve(file_path, schema_path=None):
         logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
         cvss_schemas = load_cvss_schemas()
         
-        with open(file_path, "rb") as f:
-            # Detect structure
-            parser = ijson.parse(f)
-            has_vulnerabilities = False
-            root_keys = []
-            for prefix, event, value in parser:
-                if event == "map_key" and not prefix:
-                    root_keys.append(value)
-                if prefix == "vulnerabilities" and event == "start_array":
-                    has_vulnerabilities = True
-                if len(root_keys) >= 5:
-                    break
-        
-        logging.debug(f"JSON root keys: {root_keys}")
-        if not has_vulnerabilities:
-            logging.warning(f"No vulnerabilities array found in {file_path}. Root keys: {root_keys}")
-            return []
-
-        # Validate full file schema if schema_path provided
-        with open(file_path, "rb") as f:
-            if schema_path:
-                logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
+        # Check if file is valid JSON and has vulnerabilities
+        with open(file_path, "r") as f:
+            try:
                 data = json.load(f)
-                if not validate_json(data, schema_path, skip_on_failure=True):
-                    logging.warning(f"Continuing parsing {file_path} despite schema validation failure")
-                f.seek(0)
+            except json.JSONDecodeError as e:
+                logging.error(f"Invalid JSON in {file_path}: {e}")
+                return []
             
+            root_keys = list(data.keys())
+            logging.debug(f"JSON root keys: {root_keys}")
+            if 'vulnerabilities' not in data:
+                logging.warning(f"No vulnerabilities array found in {file_path}. Root keys: {root_keys}")
+                return []
+            if not data['vulnerabilities']:
+                logging.info(f"Empty vulnerabilities array in {file_path}")
+                return []
+
+        # Validate full file schema if provided
+        if schema_path:
+            logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
+            with open(file_path, "r") as f:
+                data = json.load(f)
+                if not validate_json(data, schema_path, skip_on=True):
+                    logging.warning(f"Continuing parsing {file_path} despite schema validation failure")
+
+        with open(file_path, "rb") as f:
             risks = []
             skipped_items = 0
             item_count = 0
             logging.info(f"Streaming vulnerabilities.item from {file_path}")
-            
+
             for item in ijson.items(f, "vulnerabilities.item"):
                 item_count += 1
                 if item_count % 100 == 0:
                     logging.info(f"Processed {item_count} items in {file_path}")
-                
+
                 item = convert_decimals(item)
                 cve_data = item.get("cve", {})
                 cve_id = cve_data.get("id", "")
@@ -138,7 +138,7 @@ def parse_nvd_cve(file_path, schema_path=None):
                 
                 # Validate metrics against appropriate CVSS schema
                 metrics = cve_data.get("metrics", {})
-                validate_cve_metrics(metrics, cvss_schemas)
+                validate_cve_metrics({'metrics': metrics}, cvss_schemas)
                 
                 cwe_id = ""
                 for problem in cve_data.get("weaknesses", []):
@@ -250,7 +250,7 @@ def parse_all_datasets(data_dir, attack_mappings):
     for nvd_path in sorted(nvd_files):
         file_name = os.path.basename(nvd_path)
         risks = parse_nvd_cve(nvd_path, schema_path)
-        if risks is not None:  # Only include if parsing succeeded
+        if risks is not None:
             all_risks[f"nvd_{file_name}"] = risks
     
     kev_attack_path = os.path.join(data_dir, "kev_attack_mapping.json")
