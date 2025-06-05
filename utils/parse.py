@@ -37,8 +37,9 @@ def load_cvss_schemas():
             logging.warning(f"Failed to load CVSS schema {filename}: {e}")
     return schemas
 
-def validate_cve_metrics(metrics, cvss_schemas):
+def validate_cve_metrics(metrics, cvss_schemas, file_path):
     """Validate CVE metrics against the appropriate CVSS schema."""
+    validation_errors = {}
     for metric_key in ['cvssMetricV2', 'cvssMetricV30', 'cvssMetricV31', 'cvssMetricV40']:
         if metric_key in metrics:
             version_map = {
@@ -50,13 +51,17 @@ def validate_cve_metrics(metrics, cvss_schemas):
             version = version_map[metric_key]
             schema = cvss_schemas.get(version)
             if not schema:
-                logging.warning(f"No schema found for CVSS version {version}")
+                logging.warning(f"No schema found for CVSS version {version} in {file_path}")
                 continue
-            for metric in metrics[metric_key]:
+            for idx, metric in enumerate(metrics[metric_key]):
+                cvss_data = metric.get('cvssData', {})
                 try:
-                    jsonschema.validate(instance=metric.get('cvssData', {}), schema=schema)
+                    jsonschema.validate(instance=cvss_data, schema=schema)
                 except jsonschema.exceptions.ValidationError as e:
-                    logging.warning(f"CVSS {version} validation failed: {e.message}")
+                    error_key = f"{version}_{cvss_data.get('vectorString', 'unknown')}"
+                    if error_key not in validation_errors:
+                        validation_errors[error_key] = e.message
+                        logging.warning(f"CVSS {version} validation failed in {file_path} at index {idx}: {e.message} (vector: {cvss_data.get('vectorString', 'unknown')})")
     return True
 
 def parse_cisa_kev(file_path):
@@ -144,7 +149,7 @@ def parse_nvd_cve(file_path, schema_path=None):
                 
                 # Validate metrics against appropriate CVSS schema
                 metrics = cve_data.get("metrics", {})
-                validate_cve_metrics(metrics, cvss_schemas)
+                validate_cve_metrics(metrics, cvss_schemas, file_path)
                 
                 cwe_id = ""
                 for problem in cve_data.get("weaknesses", []):
