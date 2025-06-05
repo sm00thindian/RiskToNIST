@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from .schema import validate_json
 import ijson
+import glob
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -43,22 +44,18 @@ def parse_nvd_cve(file_path, schema_path=None):
             # Detect structure
             parser = ijson.parse(f)
             has_vulnerabilities = False
-            has_cve_items = False
             root_keys = []
             for prefix, event, value in parser:
                 if event == "map_key" and not prefix:
                     root_keys.append(value)
                 if prefix == "vulnerabilities" and event == "start_array":
                     has_vulnerabilities = True
-                elif prefix == "CVE_Items" and event == "start_array":
-                    has_cve_items = True
-                if has_vulnerabilities or has_cve_items or len(root_keys) >= 5:
+                if len(root_keys) >= 5:
                     break
         
-        # Log root structure for debugging
         logging.debug(f"JSON root keys: {root_keys}")
-        if not has_vulnerabilities and not has_cve_items:
-            logging.warning(f"No vulnerabilities or CVE_Items arrays found in {file_path}")
+        if not has_vulnerabilities:
+            logging.warning(f"No vulnerabilities array found in {file_path}. Root keys: {root_keys}")
 
         # Validate schema
         with open(file_path, "rb") as f:
@@ -68,23 +65,18 @@ def parse_nvd_cve(file_path, schema_path=None):
                 if not validate_json(data, schema_path, skip_on_failure=True):
                     logging.warning(f"Continuing parsing {file_path} despite schema validation failure")
                 f.seek(0)
-            else:
-                data = None
             
             risks = []
             skipped_items = 0
             item_count = 0
-            # Use vulnerabilities.item for v2.0 format
-            key = "vulnerabilities.item" if has_vulnerabilities else "CVE_Items.item"
-            logging.info(f"Streaming {key} from {file_path}")
+            logging.info(f"Streaming vulnerabilities.item from {file_path}")
             
-            for item in ijson.items(f, key):
+            for item in ijson.items(f, "vulnerabilities.item"):
                 item_count += 1
                 if item_count % 100 == 0:
                     logging.info(f"Processed {item_count} items in {file_path}")
                 
-                # NVD API v2.0: item is the CVE object wrapped in {"cve": {...}}
-                cve_data = item.get("cve", {}) if has_vulnerabilities else item
+                cve_data = item.get("cve", {})
                 cve_id = cve_data.get("id", "")
                 if not cve_id:
                     skipped_items += 1
@@ -111,7 +103,6 @@ def parse_nvd_cve(file_path, schema_path=None):
                     "cve_id": cve_id,
                     "risk_context": description
                 })
-                # Debug: Log first item structure
                 if item_count == 1:
                     logging.debug(f"First CVE structure: {json.dumps(item, indent=2)[:1000]}...")
         
@@ -181,11 +172,13 @@ def parse_all_datasets(data_dir, attack_mappings):
     if os.path.exists(cisa_kev_path):
         all_risks["cisa_kev"] = parse_cisa_kev(cisa_kev_path)
     
-    for file_name in os.listdir(data_dir):
-        if file_name.startswith("nvdcve-1.1-") and file_name.endswith(".json"):
-            nvd_path = os.path.join(data_dir, file_name)
-            schema_path = os.path.join(data_dir, "nvd_cve_schema.json")
-            all_risks[f"nvd_{file_name}"] = parse_nvd_cve(nvd_path, schema_path if os.path.exists(schema_path) else None)
+    # Process all NVD CVE files matching nvdcve-*.json
+    nvd_files = glob.glob(os.path.join(data_dir, "nvdcve-*.json"))
+    schema_path = os.path.join(data_dir, "nvd_cve_schema.json")
+    schema_path = schema_path if os.path.exists(schema_path) else None
+    for nvd_path in sorted(nvd_files):
+        file_name = os.path.basename(nvd_path)
+        all_risks[f"nvd_{file_name}"] = parse_nvd_cve(nvd_path, schema_path)
     
     kev_attack_path = os.path.join(data_dir, "kev_attack_mapping.json")
     if os.path.exists(kev_attack_path):
