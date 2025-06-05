@@ -1,4 +1,3 @@
-```python
 import json
 import logging
 import os
@@ -259,4 +258,3 @@ def parse_all_datasets(data_dir, attack_mappings):
         all_risks["kev_attack"] = parse_kev_attack_mapping(kev_attack_path, attack_mappings)
     
     return all_risks
-```
