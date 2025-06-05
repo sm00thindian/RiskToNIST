@@ -1,13 +1,64 @@
+```python
 import json
 import logging
 import os
-from datetime import datetime
+from decimal import Decimal
 from .schema import validate_json
 import ijson
 import glob
+import jsonschema
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def convert_decimals(obj):
+    """Recursively convert Decimal objects to float."""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_decimals(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_decimals(item) for item in obj]
+    return obj
+
+def load_cvss_schemas():
+    """Load CVSS schemas from project root."""
+    schema_files = {
+        '2.0': 'cvss-v2.0.json',
+        '3.0': 'cvss-v3.0.json',
+        '3.1': 'cvss-v3.1.json',
+        '4.0': 'cvss-v4.0.json'
+    }
+    schemas = {}
+    for version, filename in schema_files.items():
+        try:
+            with open(filename, 'r') as f:
+                schemas[version] = json.load(f)
+        except Exception as e:
+            logging.warning(f"Failed to load CVSS schema {filename}: {e}")
+    return schemas
+
+def validate_cve_metrics(metrics, cvss_schemas):
+    """Validate CVE metrics against the appropriate CVSS schema."""
+    for metric_key in ['cvssMetricV2', 'cvssMetricV30', 'cvssMetricV31', 'cvssMetricV40']:
+        if metric_key in metrics:
+            version_map = {
+                'cvssMetricV2': '2.0',
+                'cvssMetricV30': '3.0',
+                'cvssMetricV31': '3.1',
+                'cvssMetricV40': '4.0'
+            }
+            version = version_map[metric_key]
+            schema = cvss_schemas.get(version)
+            if not schema:
+                logging.warning(f"No schema found for CVSS version {version}")
+                continue
+            for metric in metrics[metric_key]:
+                try:
+                    jsonschema.validate(instance=metric.get('cvssData', {}), schema=schema)
+                except jsonschema.exceptions.ValidationError as e:
+                    logging.warning(f"CVSS {version} validation failed: {e.message}")
+    return True
 
 def parse_cisa_kev(file_path):
     """Parse CISA KEV CSV file and return a list of risks."""
@@ -40,6 +91,8 @@ def parse_nvd_cve(file_path, schema_path=None):
     """Parse NVD CVE JSON file and return a list of risks after schema validation."""
     try:
         logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
+        cvss_schemas = load_cvss_schemas()
+        
         with open(file_path, "rb") as f:
             # Detect structure
             parser = ijson.parse(f)
@@ -56,8 +109,9 @@ def parse_nvd_cve(file_path, schema_path=None):
         logging.debug(f"JSON root keys: {root_keys}")
         if not has_vulnerabilities:
             logging.warning(f"No vulnerabilities array found in {file_path}. Root keys: {root_keys}")
+            return []
 
-        # Validate schema
+        # Validate full file schema if schema_path provided
         with open(file_path, "rb") as f:
             if schema_path:
                 logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
@@ -76,11 +130,17 @@ def parse_nvd_cve(file_path, schema_path=None):
                 if item_count % 100 == 0:
                     logging.info(f"Processed {item_count} items in {file_path}")
                 
+                item = convert_decimals(item)
                 cve_data = item.get("cve", {})
                 cve_id = cve_data.get("id", "")
                 if not cve_id:
                     skipped_items += 1
                     continue
+                
+                # Validate metrics against appropriate CVSS schema
+                metrics = cve_data.get("metrics", {})
+                validate_cve_metrics(metrics, cvss_schemas)
+                
                 cwe_id = ""
                 for problem in cve_data.get("weaknesses", []):
                     for desc in problem.get("description", []):
@@ -89,8 +149,20 @@ def parse_nvd_cve(file_path, schema_path=None):
                             break
                     if cwe_id:
                         break
-                cvss_v3 = cve_data.get("metrics", {}).get("cvssMetricV31", [{}])[0].get("cvssData", {})
-                base_score = float(cvss_v3.get("baseScore", 0.0))
+                
+                # Prioritize CVSS v3.1, then v4.0, v3.0, v2.0
+                cvss_data = None
+                for metric_key in ['cvssMetricV31', 'cvssMetricV40', 'cvssMetricV30', 'cvssMetricV2']:
+                    if metric_key in metrics and metrics[metric_key]:
+                        cvss_data = metrics[metric_key][0].get("cvssData", {})
+                        break
+                
+                if not cvss_data:
+                    logging.debug(f"No CVSS data for CVE {cve_id} in {file_path}")
+                    base_score = 0.0
+                else:
+                    base_score = float(cvss_data.get("baseScore", 0.0))
+                
                 description = next(
                     (desc.get("value", "") for desc in cve_data.get("descriptions", []) if desc.get("lang") == "en"),
                     ""
@@ -178,10 +250,13 @@ def parse_all_datasets(data_dir, attack_mappings):
     schema_path = schema_path if os.path.exists(schema_path) else None
     for nvd_path in sorted(nvd_files):
         file_name = os.path.basename(nvd_path)
-        all_risks[f"nvd_{file_name}"] = parse_nvd_cve(nvd_path, schema_path)
+        risks = parse_nvd_cve(nvd_path, schema_path)
+        if risks is not None:  # Only include if parsing succeeded
+            all_risks[f"nvd_{file_name}"] = risks
     
     kev_attack_path = os.path.join(data_dir, "kev_attack_mapping.json")
     if os.path.exists(kev_attack_path):
         all_risks["kev_attack"] = parse_kev_attack_mapping(kev_attack_path, attack_mappings)
     
     return all_risks
+```
