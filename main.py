@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from utils.download import download_datasets  # Updated import
+from utils.download import download_datasets  # Adjust if needed
 from utils.parse import parse_all_datasets
 from utils.prioritize import normalize_and_prioritize
 import pandas as pd
@@ -163,7 +163,7 @@ def main():
         weights = config.get('weights', {'exploitation': 0.4, 'severity': 0.4, 'applicability': 0.2})
         
         logging.info("Starting dataset downloads")
-        download_datasets(config, api_key, data_dir)  # Updated function call
+        download_datasets(config, api_key, data_dir)
         logging.info("Completed dataset downloads")
         
         logging.info("Loading ATT&CK mappings from data")
