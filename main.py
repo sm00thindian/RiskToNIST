@@ -3,7 +3,7 @@ import logging
 import os
 from utils.download import download_datasets  # Adjust if needed
 from utils.parse import parse_all_datasets
-from utils.prioritize import normalize_and_prioritize
+from utils.map_risks import normalize_and_prioritize
 import pandas as pd
 from datetime import datetime
 
