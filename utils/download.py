@@ -6,6 +6,7 @@ import json
 import hashlib
 from .schema import download_schema, validate_json
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from urllib.parse import quote
 
 # Configure logging
@@ -69,15 +70,8 @@ def is_cache_valid(cache_path):
     current_time = time.time()
     return (current_time - file_mtime) < CACHE_TTL
 
-def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path=None, force_refresh=False):
-    """Download CVE data from the NVD API with caching, retries, and schema validation."""
-    if os.path.exists(output_path) and not force_refresh:
-        file_size = os.path.getsize(output_path)
-        if file_size > 0:
-            logging.info(f"File {output_path} exists and is {file_size} bytes, skipping NVD API download")
-            return
-        logging.warning(f"File {output_path} exists but is empty, forcing download")
-
+def download_nvd_api(api_url, data_dir, api_key, schema_url=None, schema_path=None, force_refresh=False):
+    """Download NVD CVE data for the past 18 months, split by month."""
     try:
         if schema_url and schema_path:
             logging.debug(f"Downloading schema from {schema_url}")
@@ -90,49 +84,53 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             logging.warning("No NVD_API_KEY provided, environment variable not set, and not found in api_keys.json. NVD API downloads may fail.")
 
         headers = {"apiKey": api_key} if api_key else {}
-        # Date range: Last 120 days
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=120)
-        params = {
-            "pubStartDate": start_date.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "pubEndDate": end_date.strftime("%Y-%m-%dT%H:%M:%S.999Z"),
-            "resultsPerPage": 2000,
-            "startIndex": 0
-        }
-        all_items = []
-        start_index = 0
-        results_per_page = params["resultsPerPage"]
-        max_results = 10000
-        total_results = 0
-        retries = 3
-        delay = 6 if api_key else 30
-
-        cache_path = get_cache_path(params)
-        if is_cache_valid(cache_path) and not force_refresh:
-            logging.info(f"Loading cached NVD data from {cache_path}")
-            with open(cache_path, "r") as f:
-                data = json.load(f)
-            all_items = data.get("vulnerabilities", [])
-            total_results = data.get("totalResults", 0)
-        else:
-            query_attempts = [
-                params,
-                {"resultsPerPage": 2000, "startIndex": 0}
-            ]
-            success = False
+        # Get date ranges for the past 18 months, ending with the previous month
+        end_date = (datetime.utcnow().replace(day=1) - timedelta(days=1)).replace(day=1)
+        start_date = end_date - relativedelta(months=18)
+        
+        current_date = start_date
+        while current_date <= end_date:
+            month_start = current_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            month_end = (month_start + relativedelta(months=1) - timedelta(seconds=1))
+            output_path = os.path.join(data_dir, f"nvdcve-{month_start.strftime('%Y-%m')}.json")
             
-            for query_params in query_attempts:
-                start_index = 0
-                all_items = []
-                total_results = 0
-                encoded_params = {
-                    k: quote(v, safe=':+-') if k in ["pubStartDate", "pubEndDate"] else v
-                    for k, v in query_params.items()
-                }
-                logging.info(f"Attempting NVD query with params: {encoded_params}")
-                
+            if os.path.exists(output_path) and not force_refresh:
+                file_size = os.path.getsize(output_path)
+                if file_size > 0:
+                    logging.info(f"File {output_path} exists and is {file_size} bytes, skipping download")
+                    current_date += relativedelta(months=1)
+                    continue
+                logging.warning(f"File {output_path} exists but is empty, forcing download")
+
+            params = {
+                "pubStartDate": month_start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "pubEndDate": month_end.strftime("%Y-%m-%dT%H:%M:%S.999Z"),
+                "resultsPerPage": 2000,
+                "startIndex": 0
+            }
+            all_items = []
+            start_index = 0
+            results_per_page = params["resultsPerPage"]
+            max_results = 10000
+            total_results = 0
+            retries = 3
+            delay = 6 if api_key else 30
+
+            cache_path = get_cache_path(params)
+            if is_cache_valid(cache_path) and not force_refresh:
+                logging.info(f"Loading cached NVD data from {cache_path}")
+                with open(cache_path, "r") as f:
+                    data = json.load(f)
+                all_items = data.get("vulnerabilities", [])
+                total_results = data.get("totalResults", 0)
+            else:
+                logging.info(f"Fetching NVD CVEs for {month_start.strftime('%Y-%m')}: {params}")
                 while True:
-                    encoded_params["startIndex"] = start_index
+                    params["startIndex"] = start_index
+                    encoded_params = {
+                        k: quote(v, safe=':+-') if k in ["pubStartDate", "pubEndDate"] else v
+                        for k, v in params.items()
+                    }
                     logging.info(f"Fetching NVD CVEs: startIndex={start_index}, resultsPerPage={results_per_page}")
                     for attempt in range(retries):
                         try:
@@ -170,48 +168,42 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
                     if response.status_code in [400, 404]:
                         break
                     if len(all_items) >= total_results or not items or len(all_items) >= max_results:
-                        success = True
                         break
                     start_index += results_per_page
                     time.sleep(delay)
 
-                if success:
-                    break
+                cache_data = {
+                    "vulnerabilities": all_items,
+                    "totalResults": total_results,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                with open(cache_path, "w") as f:
+                    json.dump(cache_data, f)
+                logging.info(f"Cached NVD data to {cache_path}")
 
-            if not success:
-                logging.error(f"All NVD query attempts failed for {api_url}")
-                return
-
-            cache_data = {
-                "vulnerabilities": all_items,
-                "totalResults": total_results,
-                "timestamp": datetime.utcnow().isoformat()
+            if not all_items:
+                logging.warning(f"No CVEs retrieved for {month_start.strftime('%Y-%m')}. Saving empty dataset.")
+            
+            nvd_data = {
+                "resultsPerPage": results_per_page,
+                "startIndex": 0,
+                "totalResults": min(total_results, len(all_items)),
+                "format": "NVD_CVE",
+                "version": "2.0",
+                "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "vulnerabilities": all_items
             }
-            with open(cache_path, "w") as f:
-                json.dump(cache_data, f)
-            logging.info(f"Cached NVD data to {cache_path}")
-
-        if not all_items:
-            logging.error(f"No CVEs retrieved from NVD API for {api_url}. Saving empty dataset.")
-        
-        nvd_data = {
-            "resultsPerPage": results_per_page,
-            "startIndex": 0,
-            "totalResults": min(total_results, len(all_items)),
-            "format": "NVD_CVE",
-            "version": "2.0",
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "vulnerabilities": all_items
-        }
-        
-        if schema_path:
-            logging.debug(f"Validating NVD data against schema: {schema_path}")
-            validate_json(nvd_data, schema_path, skip_on_failure=True)
-        
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        with open(output_path, "w") as f:
-            json.dump(nvd_data, f)
-        logging.info(f"Successfully downloaded {len(all_items)} CVEs from NVD API to {output_path}")
+            
+            if schema_path:
+                logging.debug(f"Validating NVD data against schema: {schema_path}")
+                validate_json(nvd_data, schema_path, skip_on_failure=True)
+            
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, "w") as f:
+                json.dump(nvd_data, f)
+            logging.info(f"Successfully downloaded {len(all_items)} CVEs to {output_path}")
+            
+            current_date += relativedelta(months=1)
     except Exception as e:
         logging.error(f"Error processing NVD API data: {e}")
 
@@ -229,7 +221,7 @@ def download_datasets(config, data_dir, force_refresh=False):
         schema_url = source.get("schema_url")
         schema_path = source.get("schema_path")
         
-        if not all([name, url, source_type, output_file]):
+        if not all([name, url, source_type]):
             logging.warning(f"Skipping source {name}: missing required fields")
             continue
         
@@ -237,15 +229,14 @@ def download_datasets(config, data_dir, force_refresh=False):
             logging.info(f"Skipping disabled source: {name}")
             continue
         
-        output_path = os.path.join(data_dir, output_file)
-        
         if source_type in ["file", "json", "csv"]:
+            output_path = os.path.join(data_dir, output_file)
             logging.debug(f"Downloading {name} from {url}")
             download_file(url, output_path, force_refresh)
         elif source_type == "json_api":
             if name == "NVD CVE":
                 logging.debug(f"Fetching {name} from NVD API {url}")
-                download_nvd_api(url, output_path, api_key, schema_url, schema_path, force_refresh)
+                download_nvd_api(url, data_dir, api_key, schema_url, schema_path, force_refresh)
             else:
                 logging.warning(f"JSON API source type not supported for {name}. Only NVD CVE API is implemented.")
         else:
