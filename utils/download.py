@@ -15,6 +15,25 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 CACHE_DIR = os.path.join("data", "nvd_cache")
 CACHE_TTL = 86400  # Cache for 24 hours (in seconds)
 
+def load_api_key_from_file():
+    """Load NVD API key from api_keys.json if environment variable is not set."""
+    api_keys_path = "api_keys.json"
+    try:
+        if os.path.exists(api_keys_path):
+            with open(api_keys_path, "r") as f:
+                api_keys = json.load(f)
+            api_key = api_keys.get("NVD_API_KEY")
+            if api_key:
+                logging.info("Loaded NVD_API_KEY from api_keys.json in download.py")
+                return api_key
+            else:
+                logging.warning("NVD_API_KEY not found in api_keys.json")
+        else:
+            logging.warning(f"api_keys.json not found at {api_keys_path}")
+    except Exception as e:
+        logging.error(f"Failed to load NVD_API_KEY from api_keys.json: {e}")
+    return None
+
 def download_file(url, output_path, force_refresh=False):
     """Download a file from a URL and save it to the specified path."""
     if os.path.exists(output_path) and not force_refresh:
@@ -64,23 +83,29 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             logging.debug(f"Downloading schema from {schema_url}")
             download_schema(schema_url, schema_path)
         
+        # Use provided api_key or fall back to environment variable or api_keys.json
+        if not api_key:
+            api_key = os.getenv("NVD_API_KEY") or load_api_key_from_file()
+        if not api_key:
+            logging.warning("No NVD_API_KEY provided, environment variable not set, and not found in api_keys.json. NVD API downloads may fail.")
+
         headers = {"apiKey": api_key} if api_key else {}
-        # Date range: January 1, 2024 to March 31, 2025
+        # Date range: January 1, 2024 to current date
         start_date = datetime(2024, 1, 1)
-        end_date = datetime(2025, 3, 31, 23, 59, 59, 999000)
+        end_date = datetime.now()
         params = {
             "pubStartDate": start_date.strftime("%Y-%m-%dT%H:%M:%S.000-05:00"),
             "pubEndDate": end_date.strftime("%Y-%m-%dT%H:%M:%S.999-05:00"),
-            "resultsPerPage": 2000,  # Max per NVD API v2.0
+            "resultsPerPage": 2000,
             "startIndex": 0
         }
         all_items = []
         start_index = 0
         results_per_page = params["resultsPerPage"]
-        max_results = 10000  # Comprehensive data
+        max_results = 10000
         total_results = 0
         retries = 3
-        delay = 6 if api_key else 30  # Per NVD API rate limits
+        delay = 6 if api_key else 30
 
         cache_path = get_cache_path(params)
         if is_cache_valid(cache_path) and not force_refresh:
@@ -90,10 +115,9 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             all_items = data.get("vulnerabilities", [])
             total_results = data.get("totalResults", 0)
         else:
-            # Fallback: Try without date range if initial query fails
             query_attempts = [
-                params,  # Date-based query
-                {"resultsPerPage": 2000, "startIndex": 0}  # No date filter
+                params,
+                {"resultsPerPage": 2000, "startIndex": 0}
             ]
             success = False
             
@@ -119,8 +143,6 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
                             all_items.extend(items)
                             total_results = data.get("totalResults", total_results)
                             logging.info(f"Fetched {len(items)} CVEs, total so far: {len(all_items)}/{total_results}")
-                            # Debug: Log response structure
-                            logging.debug(f"Response keys: {list(data.keys())}")
                             if items:
                                 logging.debug(f"First CVE structure: {json.dumps(items[0], indent=2)[:1000]}...")
                             elif not items and not all_items:
@@ -160,7 +182,6 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
                 logging.error(f"All NVD query attempts failed for {api_url}")
                 return
 
-            # Cache the response
             cache_data = {
                 "vulnerabilities": all_items,
                 "totalResults": total_results,
@@ -196,9 +217,9 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
 
 def download_datasets(config, data_dir, force_refresh=False):
     """Download datasets specified in the configuration."""
-    api_key = os.getenv("NVD_API_KEY")
+    api_key = os.getenv("NVD_API_KEY") or load_api_key_from_file()
     if not api_key:
-        logging.warning("NVD_API_KEY environment variable not set. NVD API downloads may fail.")
+        logging.warning("NVD_API_KEY environment variable not set and not found in api_keys.json. NVD API downloads may fail.")
 
     for source in config.get("sources", []):
         name = source.get("name", "")
