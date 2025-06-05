@@ -1,4 +1,3 @@
-```python
 import json
 import logging
 import os
@@ -93,8 +92,15 @@ def parse_nvd_cve(file_path, schema_path=None):
         logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
         cvss_schemas = load_cvss_schemas()
         
-        # Check if file is valid JSON and has vulnerabilities
-        with open(file_path, "r") as f:
+        # Check file size and first few bytes
+        file_size = os.path.getsize(file_path)
+        logging.debug(f"File size: {file_size} bytes")
+        with open(file_path, "r", encoding="utf-8") as f:
+            first_bytes = f.read(100)
+            logging.debug(f"First 100 bytes: {first_bytes[:50]}...")
+
+        # Validate JSON and check for vulnerabilities array
+        with open(file_path, "r", encoding="utf-8") as f:
             try:
                 data = json.load(f)
             except json.JSONDecodeError as e:
@@ -104,7 +110,7 @@ def parse_nvd_cve(file_path, schema_path=None):
             root_keys = list(data.keys())
             logging.debug(f"JSON root keys: {root_keys}")
             if 'vulnerabilities' not in data:
-                logging.warning(f"No vulnerabilities array found in {file_path}. Root keys: {root_keys}")
+                logging.error(f"No vulnerabilities array found in {file_path}. Root keys: {root_keys}")
                 return []
             if not data['vulnerabilities']:
                 logging.info(f"Empty vulnerabilities array in {file_path}")
@@ -113,9 +119,9 @@ def parse_nvd_cve(file_path, schema_path=None):
         # Validate full file schema if provided
         if schema_path:
             logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
-            with open(file_path, "r") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if not validate_json(data, schema_path, skip_on=True):
+                if not validate_json(data, schema_path, skip_on_failure=True):
                     logging.warning(f"Continuing parsing {file_path} despite schema validation failure")
 
         with open(file_path, "rb") as f:
@@ -138,7 +144,7 @@ def parse_nvd_cve(file_path, schema_path=None):
                 
                 # Validate metrics against appropriate CVSS schema
                 metrics = cve_data.get("metrics", {})
-                validate_cve_metrics({'metrics': metrics}, cvss_schemas)
+                validate_cve_metrics(metrics, cvss_schemas)
                 
                 cwe_id = ""
                 for problem in cve_data.get("weaknesses", []):
@@ -243,7 +249,7 @@ def parse_all_datasets(data_dir, attack_mappings):
     if os.path.exists(cisa_kev_path):
         all_risks["cisa_kev"] = parse_cisa_kev(cisa_kev_path)
     
-    # Process all NVD CVE files matching nvdcve-*.json
+    # Process all NVD files matching nvdcve-*.json
     nvd_files = glob.glob(os.path.join(data_dir, "nvdcve-*.json"))
     schema_path = os.path.join(data_dir, "nvd_cve_schema.json")
     schema_path = schema_path if os.path.exists(schema_path) else None
