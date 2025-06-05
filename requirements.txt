@@ -7,3 +7,4 @@ certifi==2024.8.30
 ijson==3.2.3
 cachetools==5.3.3
 urllib3<2.0
+python-dateutil>=2.8.2
