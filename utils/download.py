@@ -90,12 +90,12 @@ def download_nvd_api(api_url, output_path, api_key, schema_url=None, schema_path
             logging.warning("No NVD_API_KEY provided, environment variable not set, and not found in api_keys.json. NVD API downloads may fail.")
 
         headers = {"apiKey": api_key} if api_key else {}
-        # Date range: January 1, 2024 to current date
-        start_date = datetime(2024, 1, 1)
-        end_date = datetime.now()
+        # Date range: Last 120 days
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=120)
         params = {
-            "pubStartDate": start_date.strftime("%Y-%m-%dT%H:%M:%S.000-05:00"),
-            "pubEndDate": end_date.strftime("%Y-%m-%dT%H:%M:%S.999-05:00"),
+            "pubStartDate": start_date.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "pubEndDate": end_date.strftime("%Y-%m-%dT%H:%M:%S.999Z"),
             "resultsPerPage": 2000,
             "startIndex": 0
         }
