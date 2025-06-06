@@ -114,7 +114,19 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                 
                 # Extract publication date
                 pub_date = cve_data.get("published", "")
-                pub_date = datetime.strptime(pub_date, "%Y-%m-%dT%H:%M:%S.%fZ") if pub_date else None
+                try:
+                    if pub_date:
+                        # Try parsing with milliseconds
+                        pub_date = datetime.strptime(pub_date, "%Y-%m-%dT%H:%M:%S.%f")
+                    else:
+                        pub_date = None
+                except ValueError:
+                    try:
+                        # Fallback to seconds without milliseconds
+                        pub_date = datetime.strptime(pub_date, "%Y-%m-%dT%H:%M:%S")
+                    except ValueError as e:
+                        logging.error(f"Failed to parse date '{pub_date}' in {file_path}: {e}")
+                        pub_date = None
                 
                 risks.append({
                     "mitigating_controls": ["SI-2", "RA-5"],
@@ -190,14 +202,14 @@ def parse_cisa_kev(file_path):
             cve_id = row.get("cveID", "")
             if not cve_id:
                 continue
-            cwe_id = row.get("cweID", "") if "cweID" in row else ""  # Attempt to extract CWE if available
+            cwe_id = row.get("cweID", "") if "cweID" in row else ""
             pub_date = row.get("dateAdded", "")
             pub_date = datetime.strptime(pub_date, "%Y-%m-%d") if pub_date else None
             risks.append({
                 "mitigating_controls": ["SI-2", "RA-5", "SC-7"],
                 "exploitation_score": 9.0,
                 "impact_score": 9.0,
-                "exploit_maturity": "ATTACKED",  # CISA KEV implies known exploitation
+                "exploit_maturity": "ATTACKED",
                 "cve_id": cve_id,
                 "cwe": cwe_id,
                 "risk_context": f"CISA KEV: {row.get('vulnerabilityName', '')}",
@@ -242,14 +254,14 @@ def parse_kev_attack_mapping(json_path, attack_mappings):
                 logging.warning(f"No NIST controls mapped for technique {technique_id} in CVE {cve_id}")
                 controls = ["SI-2"]
             score = float(capability_scores.get(capability_group, 7.0))
-            cwe_id = item.get("cwe_id", "") if item.get("cwe_id") else ""  # Attempt to extract CWE if available
+            cwe_id = item.get("cwe_id", "") if item.get("cwe_id") else ""
             pub_date = item.get("published_date", "")
             pub_date = datetime.strptime(pub_date, "%Y-%m-%d") if pub_date else None
             risks.append({
                 "mitigating_controls": controls,
                 "exploitation_score": score,
                 "impact_score": score,
-                "exploit_maturity": "ATTACKED",  # KEV mappings imply exploitation
+                "exploit_maturity": "ATTACKED",
                 "cve_id": cve_id,
                 "cwe": cwe_id,
                 "risk_context": item.get("comments", ""),
