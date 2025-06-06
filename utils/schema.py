@@ -40,10 +40,14 @@ def validate_json(json_data, schema_path, cvss_schemas=None, skip_on_failure=Fal
     try:
         schema = load_schema(schema_path)
         if cvss_schemas:
-            # Embed CVSS schemas directly into definitions
+            # Embed CVSS schemas into definitions
             schema["definitions"] = schema.get("definitions", {})
             for version, cvss_schema in cvss_schemas.items():
-                schema["definitions"][f"cvss-v{version.replace('.', '')}"] = cvss_schema
+                v = version.replace('.', '')
+                schema["definitions"][f"cvss-v{v}"] = cvss_schema
+                # Copy CVSS internal definitions (e.g., accessVectorType) to top-level definitions
+                for def_key, def_value in cvss_schema.get("definitions", {}).items():
+                    schema["definitions"][def_key] = def_value
             # Update references
             def update_refs(obj):
                 if isinstance(obj, dict):
@@ -53,6 +57,8 @@ def validate_json(json_data, schema_path, cvss_schemas=None, skip_on_failure=Fal
                             v = version.replace('.', '')
                             if f"cvss-v{version}" in ref:
                                 obj["$ref"] = f"#/definitions/cvss-v{v}"
+                            elif "accessVectorType" in ref:
+                                obj["$ref"] = f"#/definitions/accessVectorType"
                     for key, value in obj.items():
                         update_refs(value)
                 elif isinstance(obj, list):
