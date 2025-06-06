@@ -139,7 +139,7 @@ def main():
         logging.info(f"Loaded {len(attack_mappings.get('mapping_objects', []))} ATT&CK mappings")
         
         logging.info("Starting dataset parsing")
-        all_risks = parse_all_datasets(data_dir, attack_mappings)
+        all_risks = parse_all_datasets(data_dir, attack_mappings, config)
         logging.info(f"Parsed risks from {len(all_risks)} sources")
         
         controls, control_details = map_risks_to_controls(all_risks, data_dir)
