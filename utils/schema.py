@@ -9,55 +9,6 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Embedded CVSS v2.0 schema
-CVSS_V2_SCHEMA = {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "type": "object",
-    "properties": {
-        "version": {"type": "string"},
-        "vectorString": {"type": "string"},
-        "accessVector": {"type": "string"},
-        "accessComplexity": {"type": "string"},
-        "authentication": {"type": "string"},
-        "confidentialityImpact": {"type": "string"},
-        "integrityImpact": {"type": "string"},
-        "availabilityImpact": {"type": "string"},
-        "baseScore": {"type": "number"},
-        "severity": {"type": "string"},
-        "exploitabilityScore": {"type": "number"},
-        "impactScore": {"type": "number"},
-        "acInsufInfo": {"type": "boolean"},
-        "obtainAllPrivilege": {"type": "boolean"},
-        "obtainUserPrivilege": {"type": "boolean"},
-        "obtainOtherPrivilege": {"type": "boolean"},
-        "userInteractionRequired": {"type": "boolean"}
-    },
-    "required": ["version", "vectorString", "baseScore"]
-}
-
-# Embedded CVSS v3.1 schema
-CVSS_V3_1_SCHEMA = {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "type": "object",
-    "properties": {
-        "version": {"type": "string"},
-        "vectorString": {"type": "string"},
-        "attackVector": {"type": "string"},
-        "attackComplexity": {"type": "string"},
-        "privilegesRequired": {"type": "string"},
-        "userInteraction": {"type": "string"},
-        "scope": {"type": "string"},
-        "confidentialityImpact": {"type": "string"},
-        "integrityImpact": {"type": "string"},
-        "availabilityImpact": {"type": "string"},
-        "baseScore": {"type": "number"},
-        "baseSeverity": {"type": "string"},
-        "exploitabilityScore": {"type": "number"},
-        "impactScore": {"type": "number"}
-    },
-    "required": ["version", "vectorString", "baseScore", "baseSeverity"]
-}
-
 def download_schema(schema_url, schema_path):
     """Download the schema if not present, bypassing SSL verification if needed."""
     if not os.path.exists(schema_path):
@@ -83,32 +34,43 @@ def download_schema(schema_url, schema_path):
             raise
 
 def validate_json(json_data, schema_path, skip_on_failure=False):
-    """Validate JSON data against the schema, with embedded CVSS schemas."""
+    """Validate JSON data against the schema, using local CVSS schemas."""
     if not os.path.exists(schema_path):
         logging.warning(f"Schema file {schema_path} not found, skipping validation.")
         return True
     try:
         with open(schema_path, "r") as f:
             schema = json.load(f)
-        # Patch schema to include CVSS v2.0 and v3.1
+        # Load local CVSS schemas
+        cvss_schemas = {}
+        for version in ['2.0', '3.0', '3.1', '4.0']:
+            cvss_schema_path = f"cvss-v{version}.json"
+            if os.path.exists(cvss_schema_path):
+                with open(cvss_schema_path, "r") as f:
+                    cvss_schemas[version] = json.load(f)
+            else:
+                logging.warning(f"CVSS schema {cvss_schema_path} not found in project root.")
+        
+        # Patch schema to include CVSS schemas
         schema["$defs"] = schema.get("$defs", {})
-        schema["$defs"]["cvss-v2.0"] = CVSS_V2_SCHEMA
-        schema["$defs"]["cvss-v3.1"] = CVSS_V3_1_SCHEMA
-        # Remove external $ref
+        for version, cvss_schema in cvss_schemas.items():
+            schema["$defs"][f"cvss-v{version}"] = cvss_schema
+        
+        # Remove external $ref to CVSS schemas
         def remove_ref(obj):
             if isinstance(obj, dict):
-                if "$ref" in obj and ("cvss-v2.0.json" in obj["$ref"] or "cvss-v3.1.json" in obj["$ref"]):
+                if "$ref" in obj and any(f"cvss-v{ver}.json" in obj["$ref"] for ver in ['2.0', '3.0', '3.1', '4.0']):
+                    ref_version = next(ver for ver in ['2.0', '3.0', '3.1', '4.0'] if f"cvss-v{ver}.json" in obj["$ref"])
                     obj.pop("$ref")
-                    if "cvss-v2.0.json" in obj.get("$ref", ""):
-                        obj.update(CVSS_V2_SCHEMA)
-                    elif "cvss-v3.1.json" in obj.get("$ref", ""):
-                        obj.update(CVSS_V3_1_SCHEMA)
+                    if ref_version in cvss_schemas:
+                        obj.update(cvss_schemas[ref_version])
                 for key, value in obj.items():
                     remove_ref(value)
             elif isinstance(obj, list):
                 for item in obj:
                     remove_ref(item)
         remove_ref(schema)
+        
         jsonschema.validate(instance=json_data, schema=schema)
         logging.info(f"JSON validated successfully against {schema_path}")
         return True
