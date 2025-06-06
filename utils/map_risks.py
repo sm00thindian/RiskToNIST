@@ -52,6 +52,11 @@ def map_risks_to_controls(all_risks, data_dir):
     else:
         logging.warning(f"NIST control details file {control_details_path} not found, using default values")
     
+    # Handle case where all_risks is empty or not a dictionary
+    if not isinstance(all_risks, dict) or not all_risks:
+        logging.info("No valid risks provided; returning empty controls dictionary.")
+        return controls, control_details
+    
     for source, risks in all_risks.items():
         for risk in risks:
             for control_id in risk.get("mitigating_controls", []):
