@@ -35,12 +35,22 @@ def to_float(value):
     """Convert value to float, handling Decimal types."""
     if isinstance(value, Decimal):
         return float(value)
-    return float(value) if value else 0.0
+    return float(value) if value is not None else 0.0
+
+def normalize_cvss_data(data):
+    """Recursively convert numeric fields in CVSS data to float."""
+    if isinstance(data, dict):
+        return {k: normalize_cvss_data(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [normalize_cvss_data(item) for item in data]
+    elif isinstance(data, (Decimal, int)):
+        return float(data)
+    return data
 
 def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
-    """Parse NVD CVE JSON file and return a list of risks with API and CVSS schema validation."""
+    """Parse NVD CVE JSON file and return a list of risks with API and schema validation."""
     try:
-        logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
+        logging.debug(f"Parsing NVD CVE file: {file_path}")
         cvss_schemas = load_cvss_schemas()
         
         # Validate JSON and check for vulnerabilities array
@@ -62,7 +72,7 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
         if schema_path:
             logging.debug(f"Validating NVD CVE data against API schema: {schema_path}")
             if not validate_json(data, schema_path, cvss_schemas, skip_on_failure=True):
-                logging.warning(f"Continuing parsing {file_path} despite API schema validation failure")
+                logging.warning(f"Continuing parsing {file_path} despite schema validation failure")
 
         with open(file_path, "rb") as f:
             risks = []
@@ -87,7 +97,7 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                         schema = cvss_schemas.get(version)
                         if schema:
                             for metric in metrics[metric_key]:
-                                cvss_data = metric.get('cvssData', {})
+                                cvss_data = normalize_cvss_data(metric.get('cvssData', {}))
                                 try:
                                     jsonschema.validate(instance=cvss_data, schema=schema)
                                     # Update exploitation_score if higher
