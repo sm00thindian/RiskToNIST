@@ -8,6 +8,7 @@ import jsonschema
 import pandas as pd
 from datetime import datetime
 from decimal import Decimal
+from json.decoder import JSONDecoder
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -38,14 +39,29 @@ def to_float(value):
     return float(value) if value is not None else 0.0
 
 def normalize_cvss_data(data):
-    """Recursively convert numeric fields in CVSS data to float."""
+    """Recursively convert numeric fields in CVSS data to float and handle NOT_DEFINED."""
     if isinstance(data, dict):
-        return {k: normalize_cvss_data(v) for k, v in data.items()}
+        normalized = {}
+        for k, v in data.items():
+            if v == "NOT_DEFINED":
+                normalized[k] = None  # Treat NOT_DEFINED as None
+            else:
+                normalized[k] = normalize_cvss_data(v)
+        return normalized
     elif isinstance(data, list):
         return [normalize_cvss_data(item) for item in data]
-    elif isinstance(data, (Decimal, int)):
+    elif isinstance(data, (Decimal, int, float)):
         return float(data)
     return data
+
+def float_decoder(obj):
+    """Custom JSON decoder to force floats."""
+    if isinstance(obj, str):
+        try:
+            return float(obj)
+        except ValueError:
+            return obj
+    return obj
 
 def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
     """Parse NVD CVE JSON file and return a list of risks with API and schema validation."""
@@ -53,10 +69,10 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
         logging.debug(f"Parsing NVD CVE file: {file_path}")
         cvss_schemas = load_cvss_schemas()
         
-        # Validate JSON and check for vulnerabilities array
+        # Load JSON with float decoder
         with open(file_path, "r", encoding="utf-8") as f:
             try:
-                data = json.load(f)
+                data = json.load(f, parse_float=float)
             except json.JSONDecodeError as e:
                 logging.error(f"Invalid JSON in {file_path}: {e}")
                 return []
@@ -127,7 +143,7 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                                         calculated_impact = (c_score + i_score + a_score) / 3.0 * 10.0
                                         if calculated_impact > impact_score:
                                             impact_score = calculated_impact
-                                            exploit_maturity = cvss_data.get('exploitMaturity', 'UNREPORTED')
+                                            exploit_maturity = cvss_data.get('exploitMaturity', 'UNREPORTED') or "UNREPORTED"
                                 except jsonschema.exceptions.ValidationError as e:
                                     logging.warning(f"CVSS {version} validation failed for CVE {cve_id}: {e.message}")
                         else:
@@ -252,7 +268,7 @@ def parse_kev_attack_mapping(json_path, attack_mappings):
     try:
         logging.debug(f"Attempting to parse KEV ATT&CK mapping file: {json_path}")
         with open(json_path, "r") as f:
-            data = json.load(f)
+            data = json.load(f, parse_float=float)
         risks = []
         capability_scores = {
             "code_execution": 10.0,
