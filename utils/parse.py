@@ -5,6 +5,8 @@ import glob
 from .schema import load_schema, validate_json
 import ijson
 import jsonschema
+import pandas as pd
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -67,6 +69,7 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                 # Validate metrics and derive scores
                 exploitation_score = 0.0
                 impact_score = 0.0
+                exploit_maturity = "UNREPORTED"  # Default for CVSS v2.0/v3.x
                 for metric_key, version in [
                     ('cvssMetricV2', '2.0'),
                     ('cvssMetricV30', '3.0'),
@@ -91,7 +94,6 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                                         if cvss_data.get('impactScore', 0.0) > impact_score:
                                             impact_score = cvss_data.get('impactScore', 0.0)
                                     elif version == '4.0':
-                                        # Approximate impact score based on CIA impacts
                                         cia_weights = {'HIGH': 1.0, 'LOW': 0.5, 'NONE': 0.0}
                                         c_score = cia_weights.get(cvss_data.get('vulnConfidentialityImpact', 'NONE'), 0.0)
                                         i_score = cia_weights.get(cvss_data.get('vulnIntegrityImpact', 'NONE'), 0.0)
@@ -99,6 +101,7 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                                         calculated_impact = (c_score + i_score + a_score) / 3.0 * 10.0
                                         if calculated_impact > impact_score:
                                             impact_score = calculated_impact
+                                            exploit_maturity = cvss_data.get('exploitMaturity', 'UNREPORTED')
                                 except jsonschema.exceptions.ValidationError as e:
                                     logging.warning(f"CVSS {version} validation failed for CVE {cve_id}: {e.message}")
                         else:
@@ -109,13 +112,19 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                 
                 description = cve_data.get("descriptions", [{}])[0].get("value", "")
                 
+                # Extract publication date
+                pub_date = cve_data.get("published", "")
+                pub_date = datetime.strptime(pub_date, "%Y-%m-%dT%H:%M:%S.%fZ") if pub_date else None
+                
                 risks.append({
                     "mitigating_controls": ["SI-2", "RA-5"],
                     "exploitation_score": float(exploitation_score),
                     "impact_score": float(impact_score),
+                    "exploit_maturity": exploit_maturity,
                     "cve_id": cve_id,
                     "cwe": cwe,
-                    "risk_context": description
+                    "risk_context": description,
+                    "published_date": pub_date
                 })
         
         logging.info(f"Parsed {len(risks)} risks from {file_path}")
@@ -172,7 +181,6 @@ def parse_all_datasets(data_dir, attack_mappings, config):
 
 def parse_cisa_kev(file_path):
     """Parse CISA KEV CSV file and return a list of risks."""
-    import pandas as pd
     try:
         logging.debug(f"Attempting to parse CISA KEV file: {file_path}")
         df = pd.read_csv(file_path)
@@ -182,14 +190,18 @@ def parse_cisa_kev(file_path):
             cve_id = row.get("cveID", "")
             if not cve_id:
                 continue
-            cwe_id = ""
+            cwe_id = row.get("cweID", "") if "cweID" in row else ""  # Attempt to extract CWE if available
+            pub_date = row.get("dateAdded", "")
+            pub_date = datetime.strptime(pub_date, "%Y-%m-%d") if pub_date else None
             risks.append({
                 "mitigating_controls": ["SI-2", "RA-5", "SC-7"],
                 "exploitation_score": 9.0,
                 "impact_score": 9.0,
-                "cwe": cwe_id,
+                "exploit_maturity": "ATTACKED",  # CISA KEV implies known exploitation
                 "cve_id": cve_id,
-                "risk_context": f"CISA KEV: {row.get('vulnerabilityName', '')}"
+                "cwe": cwe_id,
+                "risk_context": f"CISA KEV: {row.get('vulnerabilityName', '')}",
+                "published_date": pub_date
             })
         logging.info(f"Parsed {len(risks)} risks from {file_path}")
         return risks
@@ -230,13 +242,18 @@ def parse_kev_attack_mapping(json_path, attack_mappings):
                 logging.warning(f"No NIST controls mapped for technique {technique_id} in CVE {cve_id}")
                 controls = ["SI-2"]
             score = float(capability_scores.get(capability_group, 7.0))
+            cwe_id = item.get("cwe_id", "") if item.get("cwe_id") else ""  # Attempt to extract CWE if available
+            pub_date = item.get("published_date", "")
+            pub_date = datetime.strptime(pub_date, "%Y-%m-%d") if pub_date else None
             risks.append({
                 "mitigating_controls": controls,
                 "exploitation_score": score,
                 "impact_score": score,
-                "cwe": "",
+                "exploit_maturity": "ATTACKED",  # KEV mappings imply exploitation
                 "cve_id": cve_id,
-                "risk_context": item.get("comments", "")
+                "cwe": cwe_id,
+                "risk_context": item.get("comments", ""),
+                "published_date": pub_date
             })
         logging.info(f"Parsed {len(risks)} risks from {json_path}")
         return risks
