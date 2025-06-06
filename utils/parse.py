@@ -73,14 +73,14 @@ def parse_nvd_cve(file_path, schema_path="data/nvd_cve_schema.json"):
                                 except jsonschema.exceptions.ValidationError as e:
                                     logging.warning(f"CVSS {version} validation failed for CVE {cve_id}: {e.message}")
                 
-                # Extract risk data
+                # Extract risk data (placeholders for now)
                 risks.append({
                     "mitigating_controls": ["SI-2", "RA-5"],
-                    "exploitation_score": 0.0,  # Placeholder
-                    "impact_score": 0.0,  # Placeholder
-                    "cwe": "",  # Placeholder
+                    "exploitation_score": 0.0,
+                    "impact_score": 0.0,
+                    "cwe": "",
                     "cve_id": cve_id,
-                    "risk_context": ""  # Placeholder
+                    "risk_context": ""
                 })
         
         logging.info(f"Parsed {len(risks)} risks from {file_path}")
@@ -88,3 +88,18 @@ def parse_nvd_cve(file_path, schema_path="data/nvd_cve_schema.json"):
     except Exception as e:
         logging.error(f"Failed to parse NVD CVE file {file_path}: {e}")
         return []
+
+def parse_all_datasets():
+    """Parse all datasets and return a combined list of risks."""
+    risks = []
+    nvd_file_path = "path/to/nvd_cve.json"  # Replace with your actual NVD CVE file path
+    if os.path.exists(nvd_file_path):
+        risks.extend(parse_nvd_cve(nvd_file_path))
+    else:
+        logging.error(f"NVD CVE file not found at {nvd_file_path}")
+    
+    # Add parsing for other datasets here if needed, e.g.:
+    # other_file_path = "path/to/other_dataset.json"
+    # risks.extend(parse_other_dataset(other_file_path))
+    
+    return risks
