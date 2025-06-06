@@ -35,6 +35,12 @@ def load_config():
         logging.error(f"Failed to load config: {e}")
         return {}
 
+def serialize_datetime(obj):
+    """Custom JSON serializer for datetime objects."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
 def write_outputs(prioritized_controls, output_dir, weights):
     """Write prioritized controls to JSON, CSV, and HTML with enhanced metrics."""
     try:
@@ -43,7 +49,7 @@ def write_outputs(prioritized_controls, output_dir, weights):
         # JSON output
         controls_dict = {cid: details for cid, details in prioritized_controls}
         with open(os.path.join(output_dir, 'controls.json'), 'w') as f:
-            json.dump(controls_dict, f, indent=2)
+            json.dump(controls_dict, f, indent=2, default=serialize_datetime)
         logging.info(f"Wrote JSON output to {os.path.join(output_dir, 'controls.json')}")
         
         # CSV output (top 50)
@@ -71,7 +77,7 @@ def write_outputs(prioritized_controls, output_dir, weights):
             ]
             # Count unique CWEs
             unique_cwes = len(set(ctx.get('cwe', '') for ctx in risk_contexts if ctx.get('cwe')))
-            # Count recent risks (within 90 days)
+            # Count recent risks
             recent_count = sum(
                 1 for ctx in risk_contexts
                 if ctx.get('published_date') and ctx['published_date'] >= recent_threshold
@@ -110,64 +116,64 @@ def write_outputs(prioritized_controls, output_dir, weights):
         
         # HTML output
         html_content = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>NIST Controls Prioritization</title>
-            <style>
-                table { border-collapse: collapse; width: 100%; }
-                th, td { border: 1px solid black; padding: 8px; text-align: left; }
-                th { background-color: #f2f2f2; }
-            </style>
-        </head>
-        <body>
-            <h2>NIST Controls Prioritization</h2>
-            <table>
-                <tr>
-                    <th>Control ID</th>
-                    <th>Title</th>
-                    <th>Control Family</th>
-                    <th>Priority Score</th>
-                    <th>Average Priority Score</th>
-                    <th>Max Exploitation Score</th>
-                    <th>Max Impact Score</th>
-                    <th>Max Exploit Maturity</th>
-                    <th>Risk Count</th>
-                    <th>Recent Risk Count</th>
-                    <th>CISA KEV Count</th>
-                    <th>NVD Count</th>
-                    <th>Attack Mapping Count</th>
-                    <th>Source Diversity</th>
-                    <th>Top Risk IDs</th>
-                    <th>Unique CWEs</th>
-                </tr>
-        """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NIST Controls Prioritization</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h2>NIST Controls Prioritization</h2>
+    <table>
+        <tr>
+            <th>Control ID</th>
+            <th>Title</th>
+            <th>Control Family</th>
+            <th>Priority Score</th>
+            <th>Average Priority Score</th>
+            <th>Max Exploitation Score</th>
+            <th>Max Impact Score</th>
+            <th>Max Exploit Maturity</th>
+            <th>Risk Count</th>
+            <th>Recent Risk Count</th>
+            <th>CISA KEV Count</th>
+            <th>NVD Count</th>
+            <th>Attack Mapping Count</th>
+            <th>Source Diversity</th>
+            <th>Top Risk IDs</th>
+            <th>Unique CWEs</th>
+        </tr>
+"""
         for entry in csv_data:
             html_content += f"""
-                <tr>
-                    <td>{entry['Control ID']}</td>
-                    <td>{entry['Title']}</td>
-                    <td>{entry['Control Family']}</td>
-                    <td>{entry['Priority Score']:.2f}</td>
-                    <td>{entry['Average Priority Score']:.2f}</td>
-                    <td>{entry['Max Exploitation Score']:.2f}</td>
-                    <td>{entry['Max Impact Score']:.2f}</td>
-                    <td>{entry['Max Exploit Maturity']}</td>
-                    <td>{entry['Risk Count']}</td>
-                    <td>{entry['Recent Risk Count']}</td>
-                    <td>{entry['CISA KEV Count']}</td>
-                    <td>{entry['NVD Count']}</td>
-                    <td>{entry['Attack Mapping Count']}</td>
-                    <td>{entry['Source Diversity']}</td>
-                    <td>{entry['Top Risk IDs']}</td>
-                    <td>{entry['Unique CWEs']}</td>
-                </tr>
-            """
+        <tr>
+            <td>{entry['Control ID']}</td>
+            <td>{entry['Title']}</td>
+            <td>{entry['Control Family']}</td>
+            <td>{entry['Priority Score']:.2f}</td>
+            <td>{entry['Average Priority Score']:.2f}</td>
+            <td>{entry['Max Exploitation Score']:.2f}</td>
+            <td>{entry['Max Impact Score']:.2f}</td>
+            <td>{entry['Max Exploit Maturity']}</td>
+            <td>{entry['Risk Count']}</td>
+            <td>{entry['Recent Risk Count']}</td>
+            <td>{entry['CISA KEV Count']}</td>
+            <td>{entry['NVD Count']}</td>
+            <td>{entry['Attack Mapping Count']}</td>
+            <td>{entry['Source Diversity']}</td>
+            <td>{entry['Top Risk IDs']}</td>
+            <td>{entry['Unique CWEs']}</td>
+        </tr>
+"""
         html_content += """
-            </table>
-        </body>
-        </html>
-        """
+    </table>
+</body>
+</html>
+"""
         html_path = os.path.join(output_dir, 'controls.html')
         with open(html_path, 'w') as f:
             f.write(html_content)
