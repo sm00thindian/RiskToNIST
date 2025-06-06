@@ -64,8 +64,9 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                     continue
                 
                 metrics = cve_data.get("metrics", {})
-                # Validate metrics against appropriate CVSS schema
+                # Validate metrics and derive scores
                 exploitation_score = 0.0
+                impact_score = 0.0
                 for metric_key, version in [
                     ('cvssMetricV2', '2.0'),
                     ('cvssMetricV30', '3.0'),
@@ -79,9 +80,25 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                                 cvss_data = metric.get('cvssData', {})
                                 try:
                                     jsonschema.validate(instance=cvss_data, schema=schema)
-                                    # Use the baseScore from the highest available version
+                                    # Update exploitation_score if higher
                                     if cvss_data.get('baseScore', 0.0) > exploitation_score:
                                         exploitation_score = cvss_data.get('baseScore', 0.0)
+                                    # Derive impact_score
+                                    if version == '2.0':
+                                        if cvss_data.get('impactSubScore', 0.0) > impact_score:
+                                            impact_score = cvss_data.get('impactSubScore', 0.0)
+                                    elif version in ['3.0', '3.1']:
+                                        if cvss_data.get('impactScore', 0.0) > impact_score:
+                                            impact_score = cvss_data.get('impactScore', 0.0)
+                                    elif version == '4.0':
+                                        # Approximate impact score based on CIA impacts
+                                        cia_weights = {'HIGH': 1.0, 'LOW': 0.5, 'NONE': 0.0}
+                                        c_score = cia_weights.get(cvss_data.get('vulnConfidentialityImpact', 'NONE'), 0.0)
+                                        i_score = cia_weights.get(cvss_data.get('vulnIntegrityImpact', 'NONE'), 0.0)
+                                        a_score = cia_weights.get(cvss_data.get('vulnAvailabilityImpact', 'NONE'), 0.0)
+                                        calculated_impact = (c_score + i_score + a_score) / 3.0 * 10.0
+                                        if calculated_impact > impact_score:
+                                            impact_score = calculated_impact
                                 except jsonschema.exceptions.ValidationError as e:
                                     logging.warning(f"CVSS {version} validation failed for CVE {cve_id}: {e.message}")
                         else:
@@ -95,7 +112,7 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                 risks.append({
                     "mitigating_controls": ["SI-2", "RA-5"],
                     "exploitation_score": float(exploitation_score),
-                    "impact_score": 0.0,  # Placeholder for impact logic
+                    "impact_score": float(impact_score),
                     "cve_id": cve_id,
                     "cwe": cwe,
                     "risk_context": description
