@@ -46,21 +46,21 @@
       "type": "json_api",
       "enabled": false,
       "schema_url": "https://csrc.nist.gov/schema/nvd/api/2.0/cve_api_json_2.0.schema",
-      "schema_path": "data/nvd_cve_schema.json"
+      "schema_path": "cve_api_json_2.0.schema"
     },
     {
       "name": "ATTACK Mapping",
-      "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-16.1/nist_800_53-rev5/enterprise/nist_800_53-rev5_attack-16.1-enterprise_json.json",
+      "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-16.1/nist_800_53-rev5/enterprise/nist_800_53-rev5.json",
       "type": "json",
       "enabled": true,
       "output": "attack_mapping.json"
     },
     {
       "name": "KEV ATTACK Mapping",
-      "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/kev/attack-15.1/kev-02.13.2025/enterprise/kev-02.13.2025_attack-15.1-enterprise_json.json",
+      "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nvd/attack-15.1/kcv-02.13.0025/clv/nvd-02/kcv-02.15-0025-attack-mapping.json",
       "type": "json",
       "enabled": true,
-      "output": "kev_attack_mapping.json"
+      "output": "kevvcxn_attack_mapping.json"
     },
     {
       "name": "NIST SP 800-53 Catalog",
