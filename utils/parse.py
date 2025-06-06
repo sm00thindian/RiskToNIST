@@ -3,6 +3,7 @@ import logging
 import os
 from .schema import load_schema, validate_json
 import ijson
+import jsonschema
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -26,7 +27,7 @@ def load_cvss_schemas():
             logging.warning(f"Failed to load CVSS schema {filename}: {e}")
     return schemas
 
-def parse_nvd_cve(file_path, schema_path="data/nvd_cve_schema.json"):
+def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
     """Parse NVD CVE JSON file and return a list of risks after schema validation."""
     try:
         logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
@@ -62,25 +63,22 @@ def parse_nvd_cve(file_path, schema_path="data/nvd_cve_schema.json"):
                     continue
                 
                 metrics = cve_data.get("metrics", {})
-                # Validate metrics against appropriate CVSS schema
-                for metric_key in ['cvssMetricV2', 'cvssMetricV30', 'cvssMetricV31', 'cvssMetricV40']:
-                    if metric_key in metrics:
-                        version = metric_key.replace('cvssMetricV', '').replace('0', '.0')
-                        if version in cvss_schemas:
-                            for metric in metrics[metric_key]:
-                                try:
-                                    jsonschema.validate(instance=metric.get('cvssData', {}), schema=cvss_schemas[version])
-                                except jsonschema.exceptions.ValidationError as e:
-                                    logging.warning(f"CVSS {version} validation failed for CVE {cve_id}: {e.message}")
+                exploitation_score = 0.0
+                if 'cvssMetricV31' in metrics and metrics['cvssMetricV31']:
+                    exploitation_score = metrics['cvssMetricV31'][0]['cvssData'].get('baseScore', 0.0)
                 
-                # Extract risk data
+                weaknesses = cve_data.get("weaknesses", [])
+                cwe = weaknesses[0]["description"][0]["value"] if weaknesses and weaknesses[0]["description"] else ""
+                
+                description = cve_data.get("descriptions", [{}])[0].get("value", "")
+                
                 risks.append({
                     "mitigating_controls": ["SI-2", "RA-5"],
-                    "exploitation_score": 0.0,  # Placeholder
-                    "impact_score": 0.0,  # Placeholder
-                    "cwe": "",  # Placeholder
+                    "exploitation_score": float(exploitation_score),
+                    "impact_score": 0.0,  # Placeholder for impact logic
                     "cve_id": cve_id,
-                    "risk_context": ""  # Placeholder
+                    "cwe": cwe,
+                    "risk_context": description
                 })
         
         logging.info(f"Parsed {len(risks)} risks from {file_path}")
@@ -89,18 +87,43 @@ def parse_nvd_cve(file_path, schema_path="data/nvd_cve_schema.json"):
         logging.error(f"Failed to parse NVD CVE file {file_path}: {e}")
         return []
 
-def parse_all_datasets(data_dir, attack_mappings):
-    """Parse all datasets and return a combined list of risks."""
-    risks = []
-    nvd_file_path = os.path.join(data_dir, "nvd_cve.json")  # Adjust to your actual file name
-    if os.path.exists(nvd_file_path):
-        risks.extend(parse_nvd_cve(nvd_file_path))
-    else:
-        logging.error(f"NVD CVE file not found at {nvd_file_path}")
+def parse_all_datasets(data_dir, attack_mappings, config):
+    """Parse all enabled datasets and return a dictionary of risks by source."""
+    all_risks = {}
     
-    # Add parsing for other datasets here if needed
-    # For example:
-    # other_file_path = os.path.join(data_dir, "other_dataset.json")
-    # risks.extend(parse_other_dataset(other_file_path, attack_mappings))
+    # Load config if not provided
+    if config is None:
+        try:
+            with open('config.json', 'r') as f:
+                config = json.load(f)
+        except Exception as e:
+            logging.error(f"Failed to load config: {e}")
+            return all_risks
     
-    return risks
+    for source in config.get("sources", []):
+        name = source.get("name", "")
+        enabled = source.get("enabled", True)
+        output_file = source.get("output", "")
+        
+        if not enabled:
+            logging.info(f"Skipping disabled source: {name}")
+            continue
+        
+        if name == "NVD CVE":
+            if not output_file:
+                logging.debug(f"No output file specified for NVD CVE; skipping parsing.")
+                continue
+            file_path = os.path.join(data_dir, output_file)
+            if os.path.exists(file_path):
+                all_risks["nvd_cve"] = parse_nvd_cve(file_path)
+            else:
+                logging.debug(f"NVD CVE file not found at {file_path}; skipping as source is disabled or not downloaded.")
+        # Add parsing for other sources as needed
+        # Example:
+        # elif name == "CISA KEV":
+        #     file_path = os.path.join(data_dir, output_file)
+        #     if os.path.exists(file_path):
+        #         all_risks["cisa_kev"] = parse_cisa_kev(file_path)
+    
+    logging.info(f"Parsed risks from {len(all_risks)} sources")
+    return all_risks
