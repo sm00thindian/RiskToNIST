@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import glob
 from .schema import load_schema, validate_json
 import ijson
 import jsonschema
@@ -28,7 +29,7 @@ def load_cvss_schemas():
     return schemas
 
 def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
-    """Parse NVD CVE JSON file and return a list of risks after schema validation."""
+    """Parse NVD CVE JSON file and return a list of risks with API and CVSS schema validation."""
     try:
         logging.debug(f"Attempting to parse NVD CVE file: {file_path}")
         cvss_schemas = load_cvss_schemas()
@@ -48,11 +49,11 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                 logging.info(f"Empty vulnerabilities array in {file_path}")
                 return []
 
-        # Validate full file schema if provided
+        # Validate entire file against API schema
         if schema_path:
-            logging.debug(f"Validating NVD CVE data against schema: {schema_path}")
+            logging.debug(f"Validating NVD CVE data against API schema: {schema_path}")
             if not validate_json(data, schema_path, cvss_schemas, skip_on_failure=True):
-                logging.warning(f"Continuing parsing {file_path} despite schema validation failure")
+                logging.warning(f"Continuing parsing {file_path} despite API schema validation failure")
 
         with open(file_path, "rb") as f:
             risks = []
@@ -63,9 +64,28 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                     continue
                 
                 metrics = cve_data.get("metrics", {})
+                # Validate metrics against appropriate CVSS schema
                 exploitation_score = 0.0
-                if 'cvssMetricV31' in metrics and metrics['cvssMetricV31']:
-                    exploitation_score = metrics['cvssMetricV31'][0]['cvssData'].get('baseScore', 0.0)
+                for metric_key, version in [
+                    ('cvssMetricV2', '2.0'),
+                    ('cvssMetricV30', '3.0'),
+                    ('cvssMetricV31', '3.1'),
+                    ('cvssMetricV40', '4.0')
+                ]:
+                    if metric_key in metrics and metrics[metric_key]:
+                        schema = cvss_schemas.get(version)
+                        if schema:
+                            for metric in metrics[metric_key]:
+                                cvss_data = metric.get('cvssData', {})
+                                try:
+                                    jsonschema.validate(instance=cvss_data, schema=schema)
+                                    # Use the baseScore from the highest available version
+                                    if cvss_data.get('baseScore', 0.0) > exploitation_score:
+                                        exploitation_score = cvss_data.get('baseScore', 0.0)
+                                except jsonschema.exceptions.ValidationError as e:
+                                    logging.warning(f"CVSS {version} validation failed for CVE {cve_id}: {e.message}")
+                        else:
+                            logging.warning(f"No schema available for CVSS version {version} in {file_path}")
                 
                 weaknesses = cve_data.get("weaknesses", [])
                 cwe = weaknesses[0]["description"][0]["value"] if weaknesses and weaknesses[0]["description"] else ""
@@ -103,27 +123,106 @@ def parse_all_datasets(data_dir, attack_mappings, config):
     for source in config.get("sources", []):
         name = source.get("name", "")
         enabled = source.get("enabled", True)
-        output_file = source.get("output", "")
         
         if not enabled:
             logging.info(f"Skipping disabled source: {name}")
             continue
         
         if name == "NVD CVE":
-            if not output_file:
-                logging.debug(f"No output file specified for NVD CVE; skipping parsing.")
-                continue
-            file_path = os.path.join(data_dir, output_file)
-            if os.path.exists(file_path):
-                all_risks["nvd_cve"] = parse_nvd_cve(file_path)
-            else:
-                logging.debug(f"NVD CVE file not found at {file_path}; skipping as source is disabled or not downloaded.")
-        # Add parsing for other sources as needed
-        # Example:
-        # elif name == "CISA KEV":
-        #     file_path = os.path.join(data_dir, output_file)
-        #     if os.path.exists(file_path):
-        #         all_risks["cisa_kev"] = parse_cisa_kev(file_path)
+            # Process all files matching nvdcve-*.json
+            nvd_files = glob.glob(os.path.join(data_dir, "nvdcve-*.json"))
+            for file_path in sorted(nvd_files):
+                if os.path.exists(file_path):
+                    source_key = f"nvd_{os.path.basename(file_path)}"
+                    all_risks[source_key] = parse_nvd_cve(file_path)
+                else:
+                    logging.debug(f"NVD CVE file not found at {file_path}; skipping.")
+        elif name == "CISA KEV":
+            output_file = source.get("output", "")
+            if output_file:
+                file_path = os.path.join(data_dir, output_file)
+                if os.path.exists(file_path):
+                    all_risks["cisa_kev"] = parse_cisa_kev(file_path)
+        elif name == "KEV ATTACK Mapping":
+            output_file = source.get("output", "")
+            if output_file:
+                file_path = os.path.join(data_dir, output_file)
+                if os.path.exists(file_path):
+                    all_risks["kev_attack"] = parse_kev_attack_mapping(file_path, attack_mappings)
     
     logging.info(f"Parsed risks from {len(all_risks)} sources")
     return all_risks
+
+def parse_cisa_kev(file_path):
+    """Parse CISA KEV CSV file and return a list of risks."""
+    import pandas as pd
+    try:
+        logging.debug(f"Attempting to parse CISA KEV file: {file_path}")
+        df = pd.read_csv(file_path)
+        logging.debug(f"Successfully loaded CISA KEV with {len(df)} entries")
+        risks = []
+        for _, row in df.iterrows():
+            cve_id = row.get("cveID", "")
+            if not cve_id:
+                continue
+            cwe_id = ""
+            risks.append({
+                "mitigating_controls": ["SI-2", "RA-5", "SC-7"],
+                "exploitation_score": 9.0,
+                "impact_score": 9.0,
+                "cwe": cwe_id,
+                "cve_id": cve_id,
+                "risk_context": f"CISA KEV: {row.get('vulnerabilityName', '')}"
+            })
+        logging.info(f"Parsed {len(risks)} risks from {file_path}")
+        return risks
+    except Exception as e:
+        logging.error(f"Failed to parse CISA KEV file {file_path}: {e}")
+        return []
+
+def parse_kev_attack_mapping(json_path, attack_mappings):
+    """Parse KEV to ATT&CK mapping JSON file and return a list of risks."""
+    try:
+        logging.debug(f"Attempting to parse KEV ATT&CK mapping file: {json_path}")
+        with open(json_path, "r") as f:
+            data = json.load(f)
+        risks = []
+        capability_scores = {
+            "code_execution": 10.0,
+            "command_injection": 10.0,
+            "untrusted_data": 9.0,
+            "buffer_overflow": 9.0,
+            "use_after_free": 9.0,
+            "dir_traversal": 8.0,
+            "input_validation": 8.0,
+            "auth_bypass": 8.0,
+            "priv_escalation": 8.0,
+            "other": 7.0
+        }
+        for item in data.get("mapping_objects", []):
+            cve_id = item.get("capability_id", "")
+            technique_id = item.get("attack_object_id", "")
+            capability_group = item.get("capability_group", "other")
+            if not cve_id or not technique_id:
+                continue
+            controls = []
+            for mapping in attack_mappings.get("mapping_objects", []):
+                if mapping.get("attack_object_id") == technique_id:
+                    controls.append(mapping.get("capability_id"))
+            if not controls:
+                logging.warning(f"No NIST controls mapped for technique {technique_id} in CVE {cve_id}")
+                controls = ["SI-2"]
+            score = float(capability_scores.get(capability_group, 7.0))
+            risks.append({
+                "mitigating_controls": controls,
+                "exploitation_score": score,
+                "impact_score": score,
+                "cwe": "",
+                "cve_id": cve_id,
+                "risk_context": item.get("comments", "")
+            })
+        logging.info(f"Parsed {len(risks)} risks from {json_path}")
+        return risks
+    except Exception as e:
+        logging.error(f"Failed to parse KEV ATT&CK mapping file {json_path}: {e}")
+        return []
