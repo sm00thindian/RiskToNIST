@@ -31,6 +31,12 @@ def load_cvss_schemas():
             logging.warning(f"Failed to load CVSS schema {filename}: {e}")
     return schemas
 
+def to_float(value):
+    """Convert value to float, handling Decimal types."""
+    if isinstance(value, Decimal):
+        return float(value)
+    return float(value) if value else 0.0
+
 def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
     """Parse NVD CVE JSON file and return a list of risks with API and CVSS schema validation."""
     try:
@@ -85,36 +91,30 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                                 try:
                                     jsonschema.validate(instance=cvss_data, schema=schema)
                                     # Update exploitation_score if higher
-                                    base_score = cvss_data.get('baseScore', 0.0)
-                                    if isinstance(base_score, Decimal):
-                                        base_score = float(base_score)
+                                    base_score = to_float(cvss_data.get('baseScore', 0.0))
                                     if base_score > exploitation_score:
                                         exploitation_score = base_score
                                     # Derive impact_score
                                     if version == '2.0':
-                                        impact_subscore = cvss_data.get('impactSubScore', 0.0)
-                                        if isinstance(impact_subscore, Decimal):
-                                            impact_subscore = float(impact_subscore)
+                                        impact_subscore = to_float(cvss_data.get('impactSubScore', 0.0))
                                         if impact_subscore > impact_score:
                                             impact_score = impact_subscore
                                     elif version in ['3.0', '3.1']:
-                                        impact_subscore = cvss_data.get('impactScore', 0.0)
-                                        if isinstance(impact_subscore, Decimal):
-                                            impact_subscore = float(impact_subscore)
+                                        impact_subscore = to_float(cvss_data.get('impactScore', 0.0))
+                                        exploitability_score = to_float(cvss_data.get('exploitabilityScore', 0.0))
                                         if impact_subscore > impact_score:
                                             impact_score = impact_subscore
+                                        if exploitability_score > exploitation_score:
+                                            exploitation_score = exploitability_score
                                     elif version == '4.0':
                                         cia_weights = {'HIGH': 1.0, 'LOW': 0.5, 'NONE': 0.0}
                                         c_score = cia_weights.get(cvss_data.get('vulnConfidentialityImpact', 'NONE'), 0.0)
                                         i_score = cia_weights.get(cvss_data.get('vulnIntegrityImpact', 'NONE'), 0.0)
                                         a_score = cia_weights.get(cvss_data.get('vulnAvailabilityImpact', 'NONE'), 0.0)
-                                        if isinstance(c_score, Decimal):
-                                            c_score = float(c_score)
-                                        if isinstance(i_score, Decimal):
-                                            i_score = float(i_score)
-                                        if isinstance(a_score, Decimal):
-                                            a_score = float(a_score)
-                                        calculated_impact = (c_score + i_score + a_score) / float(3.0) * float(10.0)
+                                        c_score = to_float(c_score)
+                                        i_score = to_float(i_score)
+                                        a_score = to_float(a_score)
+                                        calculated_impact = (c_score + i_score + a_score) / 3.0 * 10.0
                                         if calculated_impact > impact_score:
                                             impact_score = calculated_impact
                                             exploit_maturity = cvss_data.get('exploitMaturity', 'UNREPORTED')
