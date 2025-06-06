@@ -44,13 +44,13 @@
       "name": "NVD CVE",
       "url": "https://services.nvd.nist.gov/rest/json/cves/2.0",
       "type": "json_api",
-      "enabled": false,
+      "enabled": true,
       "schema_url": "https://csrc.nist.gov/schema/nvd/api/2.0/cve_api_json_2.0.schema",
       "schema_path": "cve_api_json_2.0.schema"
     },
     {
       "name": "ATTACK Mapping",
-      "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-16.1/nist_800_53-rev5/enterprise/nist_800_53-rev5.json",
+      "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-16.1/nist_800_53-rev5/enterprise/nist_800_53-rev5_attack-16.1-enterprise_json.json",
       "type": "json",
       "enabled": true,
       "output": "attack_mapping.json"
