@@ -31,8 +31,11 @@ def load_cvss_schemas():
     schemas = {}
     for version, filename in schema_files.items():
         try:
-            with open(filename, 'r') as f:
-                schemas[version] = json.load(f)
+            if os.path.exists(filename):
+                with open(filename, 'r') as f:
+                    schemas[version] = json.load(f)
+            else:
+                logging.warning(f"CVSS schema {filename} not found in project root.")
         except Exception as e:
             logging.warning(f"Failed to load CVSS schema {filename}: {e}")
     return schemas
