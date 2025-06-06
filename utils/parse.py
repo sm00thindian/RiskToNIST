@@ -73,14 +73,14 @@ def parse_nvd_cve(file_path, schema_path="data/nvd_cve_schema.json"):
                                 except jsonschema.exceptions.ValidationError as e:
                                     logging.warning(f"CVSS {version} validation failed for CVE {cve_id}: {e.message}")
                 
-                # Extract risk data (placeholders for now)
+                # Extract risk data
                 risks.append({
                     "mitigating_controls": ["SI-2", "RA-5"],
-                    "exploitation_score": 0.0,
-                    "impact_score": 0.0,
-                    "cwe": "",
+                    "exploitation_score": 0.0,  # Placeholder
+                    "impact_score": 0.0,  # Placeholder
+                    "cwe": "",  # Placeholder
                     "cve_id": cve_id,
-                    "risk_context": ""
+                    "risk_context": ""  # Placeholder
                 })
         
         logging.info(f"Parsed {len(risks)} risks from {file_path}")
@@ -89,17 +89,18 @@ def parse_nvd_cve(file_path, schema_path="data/nvd_cve_schema.json"):
         logging.error(f"Failed to parse NVD CVE file {file_path}: {e}")
         return []
 
-def parse_all_datasets():
+def parse_all_datasets(data_dir, attack_mappings):
     """Parse all datasets and return a combined list of risks."""
     risks = []
-    nvd_file_path = "path/to/nvd_cve.json"  # Replace with your actual NVD CVE file path
+    nvd_file_path = os.path.join(data_dir, "nvd_cve.json")  # Adjust to your actual file name
     if os.path.exists(nvd_file_path):
         risks.extend(parse_nvd_cve(nvd_file_path))
     else:
         logging.error(f"NVD CVE file not found at {nvd_file_path}")
     
-    # Add parsing for other datasets here if needed, e.g.:
-    # other_file_path = "path/to/other_dataset.json"
-    # risks.extend(parse_other_dataset(other_file_path))
+    # Add parsing for other datasets here if needed
+    # For example:
+    # other_file_path = os.path.join(data_dir, "other_dataset.json")
+    # risks.extend(parse_other_dataset(other_file_path, attack_mappings))
     
     return risks
