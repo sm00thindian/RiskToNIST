@@ -36,7 +36,7 @@ def load_config():
         return {}
 
 def write_outputs(prioritized_controls, output_dir, weights):
-    """Write prioritized controls to JSON, CSV, and HTML with source counts."""
+    """Write prioritized controls to JSON, CSV, and HTML with enhanced metrics."""
     try:
         os.makedirs(output_dir, exist_ok=True)
         
@@ -48,18 +48,38 @@ def write_outputs(prioritized_controls, output_dir, weights):
         
         # CSV output (top 50)
         top_50 = prioritized_controls[:50]
-        csv_data = [
-            {
+        csv_data = []
+        for cid, details in top_50:
+            risk_contexts = details['risk_contexts']
+            # Calculate average priority score
+            if risk_contexts:
+                avg_priority = sum(
+                    weights["exploitation"] * float(ctx.get('exploitation_score', 0.0)) +
+                    weights["severity"] * float(ctx.get('impact_score', 0.0)) +
+                    weights["applicability"] * float(details.get('applicability', 7.0))
+                    for ctx in risk_contexts
+                ) / len(risk_contexts)
+            else:
+                avg_priority = 0.0
+            # Get top 3 CVE IDs
+            top_cves = [ctx['cve_id'] for ctx in sorted(risk_contexts, key=lambda x: x.get('exploitation_score', 0.0), reverse=True)[:3] if ctx['cve_id']]
+            # Count unique CWEs
+            unique_cwes = len(set(ctx.get('cwe', '') for ctx in risk_contexts if ctx.get('cwe')))
+            csv_data.append({
                 'Control ID': cid,
                 'Title': details['title'],
+                'Control Family': details.get('family_title', 'Unknown'),
                 'Priority Score': details['total_score'],
-                'Risk Count': len(details['risk_contexts']),
-                'CISA KEV Count': sum(1 for ctx in details['risk_contexts'] if ctx['source'] == 'cisa_kev'),
-                'NVD Count': sum(1 for ctx in details['risk_contexts'] if ctx['source'].startswith('nvd_')),
-                'Attack Mapping Count': sum(1 for ctx in details['risk_contexts'] if ctx['source'] == 'kev_attack')
-            }
-            for cid, details in top_50
-        ]
+                'Average Priority Score': avg_priority,
+                'Max Exploitation Score': details['max_exploitation'],
+                'Max Impact Score': details['max_severity'],
+                'Risk Count': len(risk_contexts),
+                'CISA KEV Count': sum(1 for ctx in risk_contexts if ctx['source'] == 'cisa_kev'),
+                'NVD Count': sum(1 for ctx in risk_contexts if ctx['source'].startswith('nvd_')),
+                'Attack Mapping Count': sum(1 for ctx in risk_contexts if ctx['source'] == 'kev_attack'),
+                'Top Risk IDs': ', '.join(top_cves),
+                'Unique CWEs': unique_cwes
+            })
         df = pd.DataFrame(csv_data)
         csv_path = os.path.join(output_dir, 'top_50_controls.csv')
         df.to_csv(csv_path, index=False)
@@ -83,23 +103,35 @@ def write_outputs(prioritized_controls, output_dir, weights):
                 <tr>
                     <th>Control ID</th>
                     <th>Title</th>
+                    <th>Control Family</th>
                     <th>Priority Score</th>
+                    <th>Average Priority Score</th>
+                    <th>Max Exploitation Score</th>
+                    <th>Max Impact Score</th>
                     <th>Risk Count</th>
                     <th>CISA KEV Count</th>
                     <th>NVD Count</th>
                     <th>Attack Mapping Count</th>
+                    <th>Top Risk IDs</th>
+                    <th>Unique CWEs</th>
                 </tr>
         """
-        for cid, details in top_50:
+        for entry in csv_data:
             html_content += f"""
                 <tr>
-                    <td>{cid}</td>
-                    <td>{details['title']}</td>
-                    <td>{details['total_score']:.2f}</td>
-                    <td>{len(details['risk_contexts'])}</td>
-                    <td>{sum(1 for ctx in details['risk_contexts'] if ctx['source'] == 'cisa_kev')}</td>
-                    <td>{sum(1 for ctx in details['risk_contexts'] if ctx['source'].startswith('nvd_'))}</td>
-                    <td>{sum(1 for ctx in details['risk_contexts'] if ctx['source'] == 'kev_attack')}</td>
+                    <td>{entry['Control ID']}</td>
+                    <td>{entry['Title']}</td>
+                    <td>{entry['Control Family']}</td>
+                    <td>{entry['Priority Score']:.2f}</td>
+                    <td>{entry['Average Priority Score']:.2f}</td>
+                    <td>{entry['Max Exploitation Score']:.2f}</td>
+                    <td>{entry['Max Impact Score']:.2f}</td>
+                    <td>{entry['Risk Count']}</td>
+                    <td>{entry['CISA KEV Count']}</td>
+                    <td>{entry['NVD Count']}</td>
+                    <td>{entry['Attack Mapping Count']}</td>
+                    <td>{entry['Top Risk IDs']}</td>
+                    <td>{entry['Unique CWEs']}</td>
                 </tr>
             """
         html_content += """
