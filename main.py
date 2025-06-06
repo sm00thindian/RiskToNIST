@@ -5,7 +5,7 @@ from utils.download import download_datasets
 from utils.parse import parse_all_datasets
 from utils.map_risks import map_risks_to_controls, normalize_and_prioritize
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -49,6 +49,8 @@ def write_outputs(prioritized_controls, output_dir, weights):
         # CSV output (top 50)
         top_50 = prioritized_controls[:50]
         csv_data = []
+        current_date = datetime.now()
+        recent_threshold = current_date - timedelta(days=90)
         for cid, details in top_50:
             risk_contexts = details['risk_contexts']
             # Calculate average priority score
@@ -61,23 +63,44 @@ def write_outputs(prioritized_controls, output_dir, weights):
                 ) / len(risk_contexts)
             else:
                 avg_priority = 0.0
-            # Get top 3 CVE IDs
-            top_cves = [ctx['cve_id'] for ctx in sorted(risk_contexts, key=lambda x: x.get('exploitation_score', 0.0), reverse=True)[:3] if ctx['cve_id']]
+            # Get top 3 CVE IDs with scores
+            top_risks = [
+                f"{ctx['cve_id']} ({ctx['exploitation_score']:.2f})"
+                for ctx in sorted(risk_contexts, key=lambda x: x.get('exploitation_score', 0.0), reverse=True)[:3]
+                if ctx['cve_id']
+            ]
             # Count unique CWEs
             unique_cwes = len(set(ctx.get('cwe', '') for ctx in risk_contexts if ctx.get('cwe')))
+            # Count recent risks (within 90 days)
+            recent_count = sum(
+                1 for ctx in risk_contexts
+                if ctx.get('published_date') and ctx['published_date'] >= recent_threshold
+            )
+            # Count unique sources
+            source_diversity = len(set(ctx['source'] for ctx in risk_contexts))
+            # Get max exploit maturity
+            maturity_order = {"ATTACKED": 3, "PROOF_OF_CONCEPT": 2, "UNREPORTED": 1}
+            max_maturity = max(
+                (maturity_order.get(ctx.get('exploit_maturity', 'UNREPORTED'), 1) for ctx in risk_contexts),
+                default=1
+            )
+            max_maturity = next(k for k, v in maturity_order.items() if v == max_maturity)
             csv_data.append({
                 'Control ID': cid,
                 'Title': details['title'],
                 'Control Family': details.get('family_title', 'Unknown'),
-                'Priority Score': details['total_score'],
-                'Average Priority Score': avg_priority,
-                'Max Exploitation Score': details['max_exploitation'],
-                'Max Impact Score': details['max_severity'],
+                'Priority Score': round(details['total_score'], 2),
+                'Average Priority Score': round(avg_priority, 2),
+                'Max Exploitation Score': round(details['max_exploitation'], 2),
+                'Max Impact Score': round(details['max_severity'], 2),
+                'Max Exploit Maturity': max_maturity,
                 'Risk Count': len(risk_contexts),
+                'Recent Risk Count': recent_count,
                 'CISA KEV Count': sum(1 for ctx in risk_contexts if ctx['source'] == 'cisa_kev'),
                 'NVD Count': sum(1 for ctx in risk_contexts if ctx['source'].startswith('nvd_')),
                 'Attack Mapping Count': sum(1 for ctx in risk_contexts if ctx['source'] == 'kev_attack'),
-                'Top Risk IDs': ', '.join(top_cves),
+                'Source Diversity': source_diversity,
+                'Top Risk IDs': ', '.join(top_risks),
                 'Unique CWEs': unique_cwes
             })
         df = pd.DataFrame(csv_data)
@@ -108,10 +131,13 @@ def write_outputs(prioritized_controls, output_dir, weights):
                     <th>Average Priority Score</th>
                     <th>Max Exploitation Score</th>
                     <th>Max Impact Score</th>
+                    <th>Max Exploit Maturity</th>
                     <th>Risk Count</th>
+                    <th>Recent Risk Count</th>
                     <th>CISA KEV Count</th>
                     <th>NVD Count</th>
                     <th>Attack Mapping Count</th>
+                    <th>Source Diversity</th>
                     <th>Top Risk IDs</th>
                     <th>Unique CWEs</th>
                 </tr>
@@ -126,10 +152,13 @@ def write_outputs(prioritized_controls, output_dir, weights):
                     <td>{entry['Average Priority Score']:.2f}</td>
                     <td>{entry['Max Exploitation Score']:.2f}</td>
                     <td>{entry['Max Impact Score']:.2f}</td>
+                    <td>{entry['Max Exploit Maturity']}</td>
                     <td>{entry['Risk Count']}</td>
+                    <td>{entry['Recent Risk Count']}</td>
                     <td>{entry['CISA KEV Count']}</td>
                     <td>{entry['NVD Count']}</td>
                     <td>{entry['Attack Mapping Count']}</td>
+                    <td>{entry['Source Diversity']}</td>
                     <td>{entry['Top Risk IDs']}</td>
                     <td>{entry['Unique CWEs']}</td>
                 </tr>
