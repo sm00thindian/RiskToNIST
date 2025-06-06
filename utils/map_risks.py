@@ -63,17 +63,22 @@ def map_risks_to_controls(all_risks, data_dir):
                 normalized_id = normalize_control_id(control_id)
                 controls[normalized_id]["max_exploitation"] = max(
                     controls[normalized_id]["max_exploitation"],
-                    float(risk.get("exploitation_score", 0.0))  # Convert to float
+                    float(risk.get("exploitation_score", 0.0))
                 )
                 controls[normalized_id]["max_severity"] = max(
                     controls[normalized_id]["max_severity"],
-                    float(risk.get("impact_score", 0.0))  # Convert to float
+                    float(risk.get("impact_score", 0.0))
                 )
                 if risk.get("risk_context"):
                     context_entry = {
                         "cve_id": risk.get("cve_id", ""),
                         "context": risk.get("risk_context", ""),
-                        "source": source
+                        "source": source,
+                        "exploitation_score": float(risk.get("exploitation_score", 0.0)),
+                        "impact_score": float(risk.get("impact_score", 0.0)),
+                        "cwe": risk.get("cwe", ""),
+                        "exploit_maturity": risk.get("exploit_maturity", "UNREPORTED"),
+                        "published_date": risk.get("published_date", None)
                     }
                     if context_entry not in controls[normalized_id]["risk_contexts"]:
                         controls[normalized_id]["risk_contexts"].append(context_entry)
@@ -88,13 +93,22 @@ def map_risks_to_controls(all_risks, data_dir):
 def normalize_and_prioritize(controls, weights):
     """Normalize and prioritize controls based on scores."""
     prioritized = []
+    # Find max values for normalization
+    max_exploitation = max((details["max_exploitation"] for details in controls.values()), default=1.0)
+    max_severity = max((details["max_severity"] for details in controls.values()), default=1.0)
+    max_applicability = max((details["applicability"] for details in controls.values()), default=1.0)
+    
     for control_id, details in controls.items():
+        # Normalize scores to 0-10 scale
+        norm_exploitation = (details["max_exploitation"] / max_exploitation * 10.0) if max_exploitation > 0 else 0.0
+        norm_severity = (details["max_severity"] / max_severity * 10.0) if max_severity > 0 else 0.0
+        norm_applicability = (details["applicability"] / max_applicability * 10.0) if max_applicability > 0 else 0.0
         total_score = (
-            weights["exploitation"] * float(details["max_exploitation"]) +
-            weights["severity"] * float(details["max_severity"]) +
-            weights["applicability"] * float(details["applicability"])
+            weights["exploitation"] * norm_exploitation +
+            weights["severity"] * norm_severity +
+            weights["applicability"] * norm_applicability
         )
-        details["total_score"] = total_score
+        details["total_score"] = round(total_score, 2)
         prioritized.append((control_id, details))
     
     prioritized.sort(key=lambda x: x[1]["total_score"], reverse=True)
