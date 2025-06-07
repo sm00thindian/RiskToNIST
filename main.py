@@ -72,14 +72,18 @@ def get_last_saturday():
         days_since_saturday = 7
     return today - timedelta(days=days_since_saturday)
 
-def write_outputs(prioritized_controls, output_dir, weights, config):
-    """Write prioritized controls to JSON, CSV, and professional HTML outputs.
+def write_outputs(prioritized_controls, output_dir, weights, config, total_risks, source_count, unmapped_techniques, validation_failures):
+    """Write prioritized controls to JSON, CSV, and professional HTML outputs with summary metrics.
 
     Args:
         prioritized_controls (list): List of (control_id, details) tuples.
         output_dir (str): Directory to save output files.
         weights (dict): Weighting factors for scoring.
         config (dict): Configuration dictionary from config.json.
+        total_risks (int): Total number of risks parsed.
+        source_count (int): Number of sources processed.
+        unmapped_techniques (int): Number of unmapped ATT&CK techniques/CWEs.
+        validation_failures (int): Number of CVSS v4.0 validation failures.
     """
     try:
         os.makedirs(output_dir, exist_ok=True)
@@ -156,7 +160,15 @@ def write_outputs(prioritized_controls, output_dir, weights, config):
         template = env.get_template('controls.html')
         current_date = datetime.now()
         data_period = f"{(current_date - timedelta(days=30*config.get('sources', [{}])[0].get('total_months', 6))).strftime('%Y-%m-%d')} to {get_last_saturday().strftime('%Y-%m-%d')}"
-        html_content = template.render(csv_data=csv_data, current_date=current_date.strftime('%B %d, %Y'), data_period=data_period)
+        html_content = template.render(
+            csv_data=csv_data,
+            current_date=current_date.strftime('%B %d, %Y'),
+            data_period=data_period,
+            total_risks=total_risks,
+            source_count=source_count,
+            unmapped_techniques=unmapped_techniques,
+            validation_failures=validation_failures
+        )
         html_path = os.path.join(output_dir, 'controls.html')
         with open(html_path, 'w') as f:
             f.write(html_content)
@@ -194,11 +206,18 @@ def main():
 
         logging.info("Starting dataset parsing")
         all_risks = parse_all_datasets(data_dir, attack_mappings, config)
-        logging.info(f"Parsed risks from {len(all_risks)} sources")
+        source_count = len(all_risks)
+        total_risks = sum(len(risks) for risks in all_risks.values())
+        logging.info(f"Parsed risks from {source_count} sources")
 
         controls, control_details = map_risks_to_controls(all_risks, data_dir)
         prioritized_controls = normalize_and_prioritize(controls, weights)
-        write_outputs(prioritized_controls, output_dir, weights, config)
+
+        # Extract summary metrics from logs (simplified; ideally, parse run.log or track during execution)
+        unmapped_techniques = len([line for line in open('outputs/run.log') if "No NIST controls mapped for technique" in line])
+        validation_failures = len([line for line in open('outputs/run.log') if "CVSS 4.0 validation failed" in line])
+
+        write_outputs(prioritized_controls, output_dir, weights, config, total_risks, source_count, unmapped_techniques, validation_failures)
 
         logging.info("Processing complete")
     except Exception as e:
