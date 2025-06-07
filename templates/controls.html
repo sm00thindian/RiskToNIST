@@ -2,149 +2,71 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prioritized NIST SP 800-53 Controls</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>NIST Controls Prioritization Report</title>
     <style>
-        .table-header:hover { cursor: pointer; background-color: #e5e7eb; }
-        .hidden { display: none; }
-        .risk-context { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
-        .risk-context.open { max-height: 500px; }
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f9; }
+        h1 { color: #333; text-align: center; }
+        .report-info { text-align: center; color: #666; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background-color: #fff; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        tr:hover { background-color: #f1f1f1; }
+        .footer { text-align: center; margin-top: 40px; color: #666; font-size: 0.9em; }
     </style>
 </head>
-<body class="bg-gray-100 font-sans">
-    <header class="bg-blue-600 text-white py-6">
-        <div class="container mx-auto px-4">
-            <h1 class="text-3xl font-bold">Prioritized NIST SP 800-53 Controls</h1>
-            <p class="mt-2">Risk-based prioritization of security controls based on NIST SP 800-53</p>
-        </div>
-    </header>
-
-    <main class="container mx-auto px-4 py-8">
-        <div class="mb-6">
-            <input type="text" id="searchInput" placeholder="Search by Control ID, Title, or Family..." 
-                   class="w-full max-w-md p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-
-        <div class="bg-white shadow-md rounded-lg overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200" id="controlsTable">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="table-header px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-sort="control_id">Control ID</th>
-                        <th class="table-header px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-sort="title">Title</th>
-                        <th class="table-header px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-sort="family">Family</th>
-                        <th class="table-header px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-sort="total_score">Total Score</th>
-                        <th class="table-header px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-sort="max_exploitation">Max Exploitation</th>
-                        <th class="table-header px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-sort="max_severity">Max Severity</th>
-                        <th class="table-header px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" data-sort="applicability">Applicability</th>
-                        <th class="px-6 py-3"></th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                    {% for control_id, details in controls %}
-                    <tr class="control-row">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ control_id }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ details.title }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ details.family_title | default("Unknown") }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ details.total_score | round(2) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ details.max_exploitation | round(2) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ details.max_severity | round(2) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ details.applicability | round(2) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm">
-                            <button class="toggle-context text-blue-600 hover:underline" data-target="context-{{ loop.index }}">Details</button>
-                        </td>
-                    </tr>
-                    <tr class="risk-context" id="context-{{ loop.index }}">
-                        <td colspan="8" class="px-6 py-4 bg-gray-50">
-                            <div class="text-sm text-gray-700">
-                                <h4 class="font-semibold mb-2">Risk Context:</h4>
-                                {% if details.risk_contexts %}
-                                    <ul class="list-disc pl-5">
-                                        {% for context in details.risk_contexts %}
-                                            <li>
-                                                <strong>{{ context.source }}:</strong> {{ context.context }}
-                                                {% if context.cve_id %} (CVE: {{ context.cve_id }}) {% endif %}
-                                            </li>
-                                        {% endfor %}
-                                    </ul>
-                                {% else %}
-                                    <p>No risk context available.</p>
-                                {% endif %}
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </main>
-
-    <footer class="bg-gray-800 text-white py-4">
-        <div class="container mx-auto px-4 text-center">
-            <p>&copy; 2025 RiskToNIST Project. Generated on {{ current_date }}.</p>
-        </div>
-    </footer>
-
-    <script>
-        // Sorting functionality
-        const table = document.getElementById('controlsTable');
-        const headers = table.querySelectorAll('.table-header');
-        let sortDirection = {};
-
-        headers.forEach(header => {
-            header.addEventListener('click', () => {
-                const sortKey = header.dataset.sort;
-                const isAsc = sortDirection[sortKey] !== 'asc';
-                sortDirection[sortKey] = isAsc ? 'asc' : 'desc';
-
-                const rows = Array.from(table.querySelectorAll('.control-row'));
-                rows.sort((a, b) => {
-                    let aValue = a.querySelector(`td:nth-child(${Array.from(headers).indexOf(header) + 1})`).textContent;
-                    let bValue = b.querySelector(`td:nth-child(${Array.from(headers).indexOf(header) + 1})`).textContent;
-
-                    if (sortKey === 'total_score' || sortKey === 'max_exploitation' || sortKey === 'max_severity' || sortKey === 'applicability') {
-                        aValue = parseFloat(aValue) || 0;
-                        bValue = parseFloat(bValue) || 0;
-                        return isAsc ? aValue - bValue : bValue - aValue;
-                    } else {
-                        return isAsc ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
-                    }
-                });
-
-                const tbody = table.querySelector('tbody');
-                rows.forEach(row => {
-                    const contextRow = document.getElementById(`context-${row.rowIndex / 2}`);
-                    tbody.appendChild(row);
-                    tbody.appendChild(contextRow);
-                });
-            });
-        });
-
-        // Search functionality
-        const searchInput = document.getElementById('searchInput');
-        searchInput.addEventListener('input', () => {
-            const query = searchInput.value.toLowerCase();
-            const rows = table.querySelectorAll('.control-row');
-            rows.forEach(row => {
-                const controlId = row.cells[0].textContent.toLowerCase();
-                const title = row.cells[1].textContent.toLowerCase();
-                const family = row.cells[2].textContent.toLowerCase();
-                const isVisible = controlId.includes(query) || title.includes(query) || family.includes(query);
-                row.classList.toggle('hidden', !isVisible);
-                const contextRow = document.getElementById(`context-${row.rowIndex / 2}`);
-                contextRow.classList.toggle('hidden', !isVisible);
-            });
-        });
-
-        // Toggle risk context
-        document.querySelectorAll('.toggle-context').forEach(button => {
-            button.addEventListener('click', () => {
-                const targetId = button.dataset.target;
-                const contextRow = document.getElementById(targetId);
-                contextRow.classList.toggle('open');
-                button.textContent = contextRow.classList.contains('open') ? 'Hide' : 'Details';
-            });
-        });
-    </script>
+<body>
+    <h1>NIST Controls Prioritization Report</h1>
+    <div class="report-info">
+        <p>Generated on: {{ current_date }}</p>
+        <p>Data Period: {{ data_period }}</p>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Control ID</th>
+                <th>Title</th>
+                <th>Control Family</th>
+                <th>Priority Score</th>
+                <th>Average Priority Score</th>
+                <th>Max Exploitation Score</th>
+                <th>Max Impact Score</th>
+                <th>Max Exploit Maturity</th>
+                <th>Risk Count</th>
+                <th>Recent Risk Count</th>
+                <th>CISA KEV Count</th>
+                <th>NVD Count</th>
+                <th>Attack Mapping Count</th>
+                <th>Source Diversity</th>
+                <th>Top Risk IDs</th>
+                <th>Unique CWEs</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in csv_data %}
+            <tr>
+                <td>{{ entry['Control ID'] }}</td>
+                <td>{{ entry['Title'] }}</td>
+                <td>{{ entry['Control Family'] }}</td>
+                <td>{{ entry['Priority Score']|round(2) }}</td>
+                <td>{{ entry['Average Priority Score']|round(2) }}</td>
+                <td>{{ entry['Max Exploitation Score']|round(2) }}</td>
+                <td>{{ entry['Max Impact Score']|round(2) }}</td>
+                <td>{{ entry['Max Exploit Maturity'] }}</td>
+                <td>{{ entry['Risk Count'] }}</td>
+                <td>{{ entry['Recent Risk Count'] }}</td>
+                <td>{{ entry['CISA KEV Count'] }}</td>
+                <td>{{ entry['NVD Count'] }}</td>
+                <td>{{ entry['Attack Mapping Count'] }}</td>
+                <td>{{ entry['Source Diversity'] }}</td>
+                <td>{{ entry['Top Risk IDs'] }}</td>
+                <td>{{ entry['Unique CWEs'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="footer">
+        <p>Generated by RiskToNIST © {{ current_date|strftime('%Y') }}</p>
+    </div>
 </body>
 </html>
