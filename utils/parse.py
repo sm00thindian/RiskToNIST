@@ -2,19 +2,22 @@ import json
 import logging
 import os
 import glob
-from .schema import load_schema, validate_json
+from datetime import datetime
+from decimal import Decimal
 import ijson
 import jsonschema
 import pandas as pd
-from datetime import datetime
-from decimal import Decimal
-from json.decoder import JSONDecoder
+from .schema import load_schema, validate_json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_cvss_schemas():
-    """Load CVSS schemas from the project root."""
+    """Load CVSS schemas from the project root.
+
+    Returns:
+        dict: Dictionary of CVSS schemas by version.
+    """
     schema_files = {
         '2.0': 'cvss-v2.0.json',
         '3.0': 'cvss-v3.0.json',
@@ -33,50 +36,68 @@ def load_cvss_schemas():
     return schemas
 
 def to_float(value):
-    """Convert value to float, handling Decimal types."""
+    """Convert value to float, handling Decimal types.
+
+    Args:
+        value: Value to convert.
+
+    Returns:
+        float: Converted value, or 0.0 if None.
+    """
     if isinstance(value, Decimal):
         return float(value)
     return float(value) if value is not None else 0.0
 
 def normalize_cvss_data(data):
-    """Recursively convert numeric fields in CVSS data to float and handle NOT_DEFINED."""
+    """Recursively normalize CVSS data, handling None and NOT_DEFINED values.
+
+    Args:
+        data: Data to normalize.
+
+    Returns:
+        Normalized data structure, or None if invalid.
+    """
     if isinstance(data, dict):
         normalized = {}
+        required_fields = ['version', 'vectorString', 'baseScore', 'baseSeverity']
         for k, v in data.items():
             if v == "NOT_DEFINED":
-                normalized[k] = None  # Treat NOT_DEFINED as None
+                normalized[k] = None
+            elif k in required_fields and v is None:
+                logging.debug(f"Skipping CVSS data due to None value in required field: {k}")
+                return None
             else:
                 normalized[k] = normalize_cvss_data(v)
         return normalized
     elif isinstance(data, list):
-        return [normalize_cvss_data(item) for item in data]
+        return [normalize_cvss_data(item) for item in data if normalize_cvss_data(item) is not None]
     elif isinstance(data, (Decimal, int, float)):
         return float(data)
+    elif data is None:
+        return None
     return data
 
-def float_decoder(obj):
-    """Custom JSON decoder to force floats."""
-    if isinstance(obj, str):
-        try:
-            return float(obj)
-        except ValueError:
-            return obj
-    return obj
-
 def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
-    """Parse NVD CVE JSON file and return a list of risks with API and schema validation."""
+    """Parse NVD CVE JSON file and return a list of risks with API and schema validation.
+
+    Args:
+        file_path (str): Path to NVD CVE JSON file.
+        schema_path (str): Path to JSON schema for validation.
+
+    Returns:
+        list: List of parsed risk dictionaries.
+    """
     try:
         logging.debug(f"Parsing NVD CVE file: {file_path}")
         cvss_schemas = load_cvss_schemas()
-        
-        # Load JSON with float decoder
+
         with open(file_path, "r", encoding="utf-8") as f:
             try:
                 data = json.load(f, parse_float=float)
             except json.JSONDecodeError as e:
                 logging.error(f"Invalid JSON in {file_path}: {e}")
                 return []
-            
+
             if 'vulnerabilities' not in data:
                 logging.error(f"No vulnerabilities array found in {file_path}.")
                 return []
@@ -84,7 +105,6 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                 logging.info(f"Empty vulnerabilities array in {file_path}")
                 return []
 
-        # Validate entire file against API schema
         if schema_path:
             logging.debug(f"Validating NVD CVE data against API schema: {schema_path}")
             if not validate_json(data, schema_path, cvss_schemas, skip_on_failure=True):
@@ -97,12 +117,12 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                 cve_id = cve_data.get("id", "")
                 if not cve_id:
                     continue
-                
+
                 metrics = cve_data.get("metrics", {})
-                # Validate metrics and derive scores
                 exploitation_score = 0.0
                 impact_score = 0.0
-                exploit_maturity = "UNREPORTED"  # Default for CVSS v2.0/v3.x
+                exploit_maturity = "UNREPORTED"
+
                 for metric_key, version in [
                     ('cvssMetricV2', '2.0'),
                     ('cvssMetricV30', '3.0'),
@@ -111,65 +131,57 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                 ]:
                     if metric_key in metrics and metrics[metric_key]:
                         schema = cvss_schemas.get(version)
-                        if schema:
-                            for metric in metrics[metric_key]:
-                                cvss_data = normalize_cvss_data(metric.get('cvssData', {}))
-                                try:
+                        for metric in metrics[metric_key]:
+                            cvss_data = normalize_cvss_data(metric.get('cvssData', {}))
+                            if cvss_data is None:
+                                logging.warning(f"Skipping CVSS {version} data for CVE {cve_id}: Invalid or missing required fields")
+                                continue
+                            try:
+                                if schema:
                                     jsonschema.validate(instance=cvss_data, schema=schema)
-                                    # Update exploitation_score if higher
-                                    base_score = to_float(cvss_data.get('baseScore', 0.0))
-                                    if base_score > exploitation_score:
-                                        exploitation_score = base_score
-                                    # Derive impact_score
-                                    if version == '2.0':
-                                        impact_subscore = to_float(cvss_data.get('impactSubScore', 0.0))
-                                        if impact_subscore > impact_score:
-                                            impact_score = impact_subscore
-                                    elif version in ['3.0', '3.1']:
-                                        impact_subscore = to_float(cvss_data.get('impactScore', 0.0))
-                                        exploitability_score = to_float(cvss_data.get('exploitabilityScore', 0.0))
-                                        if impact_subscore > impact_score:
-                                            impact_score = impact_subscore
-                                        if exploitability_score > exploitation_score:
-                                            exploitation_score = exploitability_score
-                                    elif version == '4.0':
-                                        cia_weights = {'HIGH': 1.0, 'LOW': 0.5, 'NONE': 0.0}
-                                        c_score = cia_weights.get(cvss_data.get('vulnConfidentialityImpact', 'NONE'), 0.0)
-                                        i_score = cia_weights.get(cvss_data.get('vulnIntegrityImpact', 'NONE'), 0.0)
-                                        a_score = cia_weights.get(cvss_data.get('vulnAvailabilityImpact', 'NONE'), 0.0)
-                                        c_score = to_float(c_score)
-                                        i_score = to_float(i_score)
-                                        a_score = to_float(a_score)
-                                        calculated_impact = (c_score + i_score + a_score) / 3.0 * 10.0
-                                        if calculated_impact > impact_score:
-                                            impact_score = calculated_impact
-                                            exploit_maturity = cvss_data.get('exploitMaturity', 'UNREPORTED') or "UNREPORTED"
-                                except jsonschema.exceptions.ValidationError as e:
-                                    logging.warning(f"CVSS {version} validation failed for CVE {cve_id}: {e.message}")
-                        else:
-                            logging.warning(f"No schema available for CVSS version {version} in {file_path}")
-                
+                                base_score = to_float(cvss_data.get('baseScore', 0.0))
+                                if base_score > exploitation_score:
+                                    exploitation_score = base_score
+                                if version == '2.0':
+                                    impact_subscore = to_float(cvss_data.get('impactSubScore', 0.0))
+                                    if impact_subscore > impact_score:
+                                        impact_score = impact_subscore
+                                elif version in ['3.0', '3.1']:
+                                    impact_subscore = to_float(cvss_data.get('impactScore', 0.0))
+                                    exploitability_score = to_float(cvss_data.get('exploitabilityScore', 0.0))
+                                    if impact_subscore > impact_score:
+                                        impact_score = impact_subscore
+                                    if exploitability_score > exploitation_score:
+                                        exploitation_score = exploitability_score
+                                elif version == '4.0':
+                                    cia_weights = {'HIGH': 1.0, 'LOW': 0.5, 'NONE': 0.0}
+                                    c_score = cia_weights.get(cvss_data.get('vulnConfidentialityImpact', 'NONE'), 0.0)
+                                    i_score = cia_weights.get(cvss_data.get('vulnIntegrityImpact', 'NONE'), 0.0)
+                                    a_score = cia_weights.get(cvss_data.get('vulnAvailabilityImpact', 'NONE'), 0.0)
+                                    calculated_impact = (to_float(c_score) + to_float(i_score) + to_float(a_score)) / 3.0 * 10.0
+                                    if calculated_impact > impact_score:
+                                        impact_score = calculated_impact
+                                        exploit_maturity = cvss_data.get('exploitMaturity', 'UNREPORTED') or "UNREPORTED"
+                            except jsonschema.exceptions.ValidationError as e:
+                                logging.warning(f"CVSS {version} validation failed for CVE {cve_id}: {e.message} at {e.path}")
+                                continue
+
                 weaknesses = cve_data.get("weaknesses", [])
                 cwe = weaknesses[0]["description"][0]["value"] if weaknesses and weaknesses[0]["description"] else ""
-                
                 description = cve_data.get("descriptions", [{}])[0].get("value", "")
-                
-                # Extract publication date
                 pub_date = cve_data.get("published", "")
                 try:
                     if pub_date:
-                        # Try parsing with milliseconds
                         pub_date = datetime.strptime(pub_date, "%Y-%m-%dT%H:%M:%S.%f")
                     else:
                         pub_date = None
                 except ValueError:
                     try:
-                        # Fallback to seconds without milliseconds
                         pub_date = datetime.strptime(pub_date, "%Y-%m-%dT%H:%M:%S")
                     except ValueError as e:
                         logging.error(f"Failed to parse date '{pub_date}' in {file_path}: {e}")
                         pub_date = None
-                
+
                 risks.append({
                     "mitigating_controls": ["SI-2", "RA-5"],
                     "exploitation_score": float(exploitation_score),
@@ -180,61 +192,22 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                     "risk_context": description,
                     "published_date": pub_date
                 })
-        
+
         logging.info(f"Parsed {len(risks)} risks from {file_path}")
         return risks
     except Exception as e:
         logging.error(f"Failed to parse NVD CVE file {file_path}: {e}")
         return []
 
-def parse_all_datasets(data_dir, attack_mappings, config):
-    """Parse all enabled datasets and return a dictionary of risks by source."""
-    all_risks = {}
-    
-    # Load config if not provided
-    if config is None:
-        try:
-            with open('config.json', 'r') as f:
-                config = json.load(f)
-        except Exception as e:
-            logging.error(f"Failed to load config: {e}")
-            return all_risks
-    
-    for source in config.get("sources", []):
-        name = source.get("name", "")
-        enabled = source.get("enabled", True)
-        
-        if not enabled:
-            logging.info(f"Skipping disabled source: {name}")
-            continue
-        
-        if name == "NVD CVE":
-            # Process all files matching nvdcve-*.json
-            nvd_files = glob.glob(os.path.join(data_dir, "nvdcve-*.json"))
-            for file_path in sorted(nvd_files):
-                if os.path.exists(file_path):
-                    source_key = f"nvd_{os.path.basename(file_path)}"
-                    all_risks[source_key] = parse_nvd_cve(file_path)
-                else:
-                    logging.debug(f"NVD CVE file not found at {file_path}; skipping.")
-        elif name == "CISA KEV":
-            output_file = source.get("output", "")
-            if output_file:
-                file_path = os.path.join(data_dir, output_file)
-                if os.path.exists(file_path):
-                    all_risks["cisa_kev"] = parse_cisa_kev(file_path)
-        elif name == "KEV ATTACK Mapping":
-            output_file = source.get("output", "")
-            if output_file:
-                file_path = os.path.join(data_dir, output_file)
-                if os.path.exists(file_path):
-                    all_risks["kev_attack"] = parse_kev_attack_mapping(file_path, attack_mappings)
-    
-    logging.info(f"Parsed risks from {len(all_risks)} sources")
-    return all_risks
-
 def parse_cisa_kev(file_path):
-    """Parse CISA KEV CSV file and return a list of risks."""
+    """Parse CISA KEV CSV file and return a list of risks.
+
+    Args:
+        file_path (str): Path to CISA KEV CSV file.
+
+    Returns:
+        list: List of parsed risk dictionaries.
+    """
     try:
         logging.debug(f"Attempting to parse CISA KEV file: {file_path}")
         df = pd.read_csv(file_path)
@@ -264,7 +237,15 @@ def parse_cisa_kev(file_path):
         return []
 
 def parse_kev_attack_mapping(json_path, attack_mappings):
-    """Parse KEV to ATT&CK mapping JSON file and return a list of risks."""
+    """Parse KEV to ATT&CK mapping JSON file and return a list of risks.
+
+    Args:
+        json_path (str): Path to KEV ATT&CK mapping JSON file.
+        attack_mappings (dict): ATT&CK to NIST control mappings.
+
+    Returns:
+        list: List of parsed risk dictionaries.
+    """
     try:
         logging.debug(f"Attempting to parse KEV ATT&CK mapping file: {json_path}")
         with open(json_path, "r") as f:
@@ -314,3 +295,45 @@ def parse_kev_attack_mapping(json_path, attack_mappings):
     except Exception as e:
         logging.error(f"Failed to parse KEV ATT&CK mapping file {json_path}: {e}")
         return []
+
+def parse_all_datasets(data_dir, attack_mappings, config):
+    """Parse all enabled datasets and return a dictionary of risks by source.
+
+    Args:
+        data_dir (str): Directory containing dataset files.
+        attack_mappings (dict): ATT&CK to NIST control mappings.
+        config (dict): Configuration dictionary from config.json.
+
+    Returns:
+        dict: Dictionary of risks by source.
+    """
+    all_risks = {}
+
+    for source in config.get("sources", []):
+        name = source.get("name", "")
+        enabled = source.get("enabled", True)
+        output_file = source.get("output", "")
+
+        if not enabled:
+            logging.info(f"Skipping disabled source: {name}")
+            continue
+
+        if name == "NVD CVE":
+            nvd_files = glob.glob(os.path.join(data_dir, "nvdcve-*.json"))
+            for file_path in sorted(nvd_files):
+                if os.path.exists(file_path):
+                    source_key = f"nvd_{os.path.basename(file_path)}"
+                    all_risks[source_key] = parse_nvd_cve(file_path)
+                else:
+                    logging.debug(f"NVD CVE file not found at {file_path}; skipping.")
+        elif name == "CISA KEV" and output_file:
+            file_path = os.path.join(data_dir, output_file)
+            if os.path.exists(file_path):
+                all_risks["cisa_kev"] = parse_cisa_kev(file_path)
+        elif name == "KEV ATTACK Mapping" and output_file:
+            file_path = os.path.join(data_dir, output_file)
+            if os.path.exists(file_path):
+                all_risks["kev_attack"] = parse_kev_attack_mapping(file_path, attack_mappings)
+
+    logging.info(f"Parsed risks from {len(all_risks)} sources")
+    return all_risks
