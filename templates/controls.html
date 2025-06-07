@@ -6,7 +6,10 @@
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f9; }
         h1 { color: #333; text-align: center; }
+        h2 { color: #444; margin-top: 20px; }
         .report-info { text-align: center; color: #666; margin-bottom: 20px; }
+        .summary { background-color: #fff; padding: 20px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 20px; }
+        .summary p { margin: 5px 0; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; background-color: #fff; }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
         th { background-color: #4CAF50; color: white; }
@@ -20,6 +23,13 @@
     <div class="report-info">
         <p>Generated on: {{ current_date }}</p>
         <p>Data Period: {{ data_period }}</p>
+    </div>
+    <div class="summary">
+        <h2>Report Summary</h2>
+        <p>Total Risks Parsed: {{ total_risks }}</p>
+        <p>Sources Processed: {{ source_count }}</p>
+        <p>Unmapped ATT&CK Techniques/CWEs: {{ unmapped_techniques }}</p>
+        <p>CVSS v4.0 Validation Failures: {{ validation_failures }}</p>
     </div>
     <table>
         <thead>
