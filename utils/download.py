@@ -71,8 +71,17 @@ def is_cache_valid(cache_path):
     current_time = time.time()
     return (current_time - file_mtime) < CACHE_TTL
 
-def download_nvd_api(api_url, data_dir, api_key, schema_url=None, schema_path=None, force_refresh=False):
-    """Download NVD CVE data for the past 12 months, split by week, ending last week of previous month."""
+def get_last_saturday():
+    """Return the date of the last Saturday before today."""
+    today = datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=999999)
+    days_since_saturday = (today.weekday() + 1) % 7
+    if days_since_saturday == 0:
+        days_since_saturday = 7
+    last_saturday = today - timedelta(days=days_since_saturday)
+    return last_saturday
+
+def download_nvd_api(api_url, data_dir, api_key, schema_url=None, schema_path=None, force_refresh=False, total_months=12, max_days=60, default_days=7, end_date_reference="last_saturday"):
+    """Download NVD CVE data for the specified period, in increments up to max_days, defaulting to default_days, ending on specified reference date."""
     try:
         if schema_url and schema_path:
             logging.debug(f"Downloading schema from {schema_url}")
@@ -85,27 +94,43 @@ def download_nvd_api(api_url, data_dir, api_key, schema_url=None, schema_path=No
             logging.warning("No NVD_API_KEY provided, environment variable not set, and not found in api_keys.json. NVD API downloads may fail.")
 
         headers = {"apiKey": api_key} if api_key else {}
-        # Get date ranges for the past 12 months, ending with the last week of the previous month
-        end_date = (datetime.utcnow().replace(day=1) - timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999999)
-        start_date = end_date - relativedelta(months=12) + timedelta(days=1)
+        
+        # Determine end date based on end_date_reference
+        if end_date_reference.lower() == "last_saturday":
+            end_date = get_last_saturday()
+        else:
+            end_date = datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # Validate total_months and set start date
+        total_months = max(1, min(int(total_months), 24))  # Cap at 24 months for safety
+        start_date = end_date - relativedelta(months=total_months) + timedelta(days=1)
+        
+        # Ensure max_days and default_days are positive integers
+        max_days = max(1, int(max_days))
+        default_days = max(1, min(int(default_days), max_days))
+        
+        logging.info(f"Fetching NVD CVE data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')} in {default_days}-day increments (max {max_days} days)")
         
         current_date = start_date
         while current_date <= end_date:
-            week_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
-            week_end = min(week_start + timedelta(days=6, hours=23, minutes=59, seconds=59, milliseconds=999), end_date)
-            output_path = os.path.join(data_dir, f"nvdcve-{week_start.strftime('%Y-%m-%d')}.json")
+            # Calculate the period (up to max_days, defaulting to default_days)
+            period_end = min(current_date + timedelta(days=default_days - 1, hours=23, minutes=59, seconds=59, milliseconds=999), end_date)
+            if (period_end - current_date).days > max_days:
+                period_end = current_date + timedelta(days=max_days - 1, hours=23, minutes=59, seconds=59, milliseconds=999)
+            
+            output_path = os.path.join(data_dir, f"nvdcve-{current_date.strftime('%Y-%m-%d')}.json")
             
             if os.path.exists(output_path) and not force_refresh:
                 file_size = os.path.getsize(output_path)
                 if file_size > 0:
                     logging.info(f"File {output_path} exists and is {file_size} bytes, skipping download")
-                    current_date = week_end + timedelta(days=1)
+                    current_date = period_end + timedelta(days=1)
                     continue
                 logging.warning(f"File {output_path} exists but is empty, forcing download")
 
             params = {
-                "pubStartDate": week_start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                "pubEndDate": week_end.strftime("%Y-%m-%dT%H:%M:%S.999Z"),
+                "pubStartDate": current_date.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "pubEndDate": period_end.strftime("%Y-%m-%dT%H:%M:%S.999Z"),
                 "resultsPerPage": 2000,
                 "startIndex": 0
             }
@@ -125,7 +150,7 @@ def download_nvd_api(api_url, data_dir, api_key, schema_url=None, schema_path=No
                 all_items = data.get("vulnerabilities", [])
                 total_results = data.get("totalResults", 0)
             else:
-                logging.info(f"Fetching NVD CVEs for {week_start.strftime('%Y-%m-%d')} to {week_end.strftime('%Y-%m-%d')}: {params}")
+                logging.info(f"Fetching NVD CVEs for {current_date.strftime('%Y-%m-%d')} to {period_end.strftime('%Y-%m-%d')}: {params}")
                 while True:
                     params["startIndex"] = start_index
                     encoded_params = {
@@ -183,7 +208,7 @@ def download_nvd_api(api_url, data_dir, api_key, schema_url=None, schema_path=No
                 logging.info(f"Cached NVD data to {cache_path}")
 
             if not all_items:
-                logging.warning(f"No CVEs retrieved for {week_start.strftime('%Y-%m-%d')}. Saving empty dataset.")
+                logging.warning(f"No CVEs retrieved for {current_date.strftime('%Y-%m-%d')}. Saving empty dataset.")
             
             nvd_data = {
                 "resultsPerPage": results_per_page,
@@ -204,7 +229,7 @@ def download_nvd_api(api_url, data_dir, api_key, schema_url=None, schema_path=No
                 json.dump(nvd_data, f)
             logging.info(f"Successfully downloaded {len(all_items)} CVEs to {output_path}")
             
-            current_date = week_end + timedelta(days=1)
+            current_date = period_end + timedelta(days=1)
         
         # Clean up nvd_cache directory
         if os.path.exists(CACHE_DIR):
@@ -228,6 +253,10 @@ def download_datasets(config, data_dir, force_refresh=False):
         schema_url = source.get("schema_url")
         schema_path = source.get("schema_path")
         enabled = source.get("enabled", True)
+        total_months = source.get("total_months", 12)
+        max_days = source.get("max_days", 60)
+        default_days = source.get("default_days", 7)
+        end_date_reference = source.get("end_date_reference", "last_saturday")
 
         if not all([name, url, source_type]):
             logging.warning(f"Skipping source {name}: missing required fields")
@@ -244,7 +273,7 @@ def download_datasets(config, data_dir, force_refresh=False):
         elif source_type == "json_api":
             if name == "NVD CVE":
                 logging.debug(f"Fetching {name} from NVD API {url}")
-                download_nvd_api(url, data_dir, api_key, schema_url, schema_path, force_refresh)
+                download_nvd_api(url, data_dir, api_key, schema_url, schema_path, force_refresh, total_months, max_days, default_days, end_date_reference)
             else:
                 logging.warning(f"JSON API source type not supported for {name}. Only NVD CVE API is implemented.")
         else:
