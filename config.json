@@ -47,7 +47,7 @@
       "enabled": true,
       "schema_url": "https://csrc.nist.gov/schema/nvd/api/2.0/cve_api_json_2.0.schema",
       "schema_path": "cve_api_json_2.0.schema",
-      "total_months": 12,
+      "total_months": 6,
       "max_days": 60,
       "default_days": 7,
       "end_date_reference": "last_saturday"
