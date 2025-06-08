@@ -12,11 +12,7 @@ from utils.map_risks import map_risks_to_controls, normalize_and_prioritize
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_nvd_api_key():
-    """Load NVD API key from api_keys.json.
-
-    Returns:
-        str: API key if found, None otherwise.
-    """
+    """Load NVD API key from api_keys.json."""
     try:
         with open('api_keys.json', 'r') as f:
             keys = json.load(f)
@@ -30,11 +26,7 @@ def load_nvd_api_key():
         return None
 
 def load_config():
-    """Load configuration from config.json.
-
-    Returns:
-        dict: Configuration dictionary.
-    """
+    """Load configuration from config.json."""
     try:
         with open('config.json', 'r') as f:
             config = json.load(f)
@@ -45,27 +37,13 @@ def load_config():
         return {}
 
 def serialize_datetime(obj):
-    """Custom JSON serializer for datetime objects.
-
-    Args:
-        obj: Object to serialize.
-
-    Returns:
-        str: ISO-formatted string for datetime objects.
-
-    Raises:
-        TypeError: If object is not serializable.
-    """
+    """Custom JSON serializer for datetime objects."""
     if isinstance(obj, datetime):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 def get_last_saturday():
-    """Calculate the date of the last Saturday before today.
-
-    Returns:
-        datetime: Date of the last Saturday.
-    """
+    """Calculate the date of the last Saturday before today."""
     today = datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=999999)
     days_since_saturday = (today.weekday() + 1) % 7
     if days_since_saturday == 0:
@@ -73,15 +51,7 @@ def get_last_saturday():
     return today - timedelta(days=days_since_saturday)
 
 def strftime_filter(dt, fmt):
-    """Custom Jinja2 filter to format datetime objects.
-
-    Args:
-        dt: Datetime object or string to format.
-        fmt (str): Format string for strftime.
-
-    Returns:
-        str: Formatted date string, or empty string if formatting fails.
-    """
+    """Custom Jinja2 filter to format datetime objects."""
     try:
         if isinstance(dt, datetime):
             return dt.strftime(fmt)
@@ -93,18 +63,7 @@ def strftime_filter(dt, fmt):
         return ""
 
 def write_outputs(prioritized_controls, output_dir, weights, config, total_risks, source_count, unmapped_techniques, validation_failures):
-    """Write prioritized controls to JSON, CSV, and professional HTML outputs with summary metrics.
-
-    Args:
-        prioritized_controls (list): List of (control_id, details) tuples.
-        output_dir (str): Directory to save output files.
-        weights (dict): Weighting factors for scoring.
-        config (dict): Configuration dictionary from config.json.
-        total_risks (int): Total number of risks parsed.
-        source_count (int): Number of sources processed.
-        unmapped_techniques (int): Number of unmapped ATT&CK techniques/CWEs.
-        validation_failures (int): Number of CVSS v4.0 validation failures.
-    """
+    """Write prioritized controls to JSON, CSV, and professional HTML outputs with summary metrics."""
     try:
         os.makedirs(output_dir, exist_ok=True)
 
@@ -128,15 +87,20 @@ def write_outputs(prioritized_controls, output_dir, weights, config, total_risks
                 weights["applicability"] * float(details.get('applicability', 7.0))
                 for ctx in risk_contexts
             ) / len(risk_contexts) if risk_contexts else 0.0
+            # Prioritize recent risks in Top Risk IDs
             top_risks = [
                 f"{ctx['cve_id']} ({ctx['exploitation_score']:.2f})"
-                for ctx in sorted(risk_contexts, key=lambda x: x.get('exploitation_score', 0.0), reverse=True)[:3]
+                for ctx in sorted(
+                    risk_contexts,
+                    key=lambda x: (x.get('published_date', datetime.min), x.get('exploitation_score', 0.0)),
+                    reverse=True
+                )[:3]
                 if ctx['cve_id']
             ]
             unique_cwes = len(set(ctx.get('cwe', '') for ctx in risk_contexts if ctx.get('cwe')))
             recent_count = sum(
                 1 for ctx in risk_contexts
-                if ctx.get('published_date') and ctx['published_date'] >= recent_threshold
+                if ctx.get('published_date') and isinstance(ctx['published_date'], datetime) and ctx['published_date'] >= recent_threshold
             )
             maturity_order = {"ATTACKED": 3, "PROOF_OF_CONCEPT": 2, "UNREPORTED": 1}
             max_maturity = max(
@@ -172,7 +136,7 @@ def write_outputs(prioritized_controls, output_dir, weights, config, total_risks
             logging.error(f"Template {template_path} not found. Please ensure controls.html exists in the templates directory.")
             return
         env = Environment(loader=FileSystemLoader(template_dir))
-        env.filters['strftime'] = strftime_filter  # Add custom strftime filter
+        env.filters['strftime'] = strftime_filter
         template = env.get_template('controls.html')
         current_date = datetime.now()
         data_period = f"{(current_date - timedelta(days=30*config.get('sources', [{}])[0].get('total_months', 6))).strftime('%Y-%m-%d')} to {get_last_saturday().strftime('%Y-%m-%d')}"
@@ -192,18 +156,13 @@ def write_outputs(prioritized_controls, output_dir, weights, config, total_risks
             logging.info(f"Wrote HTML output to {html_path}")
         except Exception as e:
             logging.error(f"Failed to render HTML template: {e}")
-            # Continue to ensure JSON and CSV outputs are not affected
 
         logging.info("Completed writing outputs")
     except Exception as e:
         logging.error(f"Failed to write outputs: {e}")
 
 def main():
-    """Orchestrate the RiskToNIST process to map risks to NIST controls.
-
-    Raises:
-        ValueError: If no NVD API key is provided.
-    """
+    """Orchestrate the RiskToNIST process to map risks to NIST controls."""
     try:
         api_key = load_nvd_api_key()
         if not api_key:
@@ -233,7 +192,6 @@ def main():
         controls, control_details = map_risks_to_controls(all_risks, data_dir)
         prioritized_controls = normalize_and_prioritize(controls, weights)
 
-        # Extract summary metrics from logs
         unmapped_techniques = len([line for line in open('outputs/run.log') if "No NIST controls mapped for technique" in line])
         validation_failures = len([line for line in open('outputs/run.log') if "CVSS 4.0 validation failed" in line])
 
