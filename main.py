@@ -72,6 +72,26 @@ def get_last_saturday():
         days_since_saturday = 7
     return today - timedelta(days=days_since_saturday)
 
+def strftime_filter(dt, fmt):
+    """Custom Jinja2 filter to format datetime objects.
+
+    Args:
+        dt: Datetime object or string to format.
+        fmt (str): Format string for strftime.
+
+    Returns:
+        str: Formatted date string, or empty string if formatting fails.
+    """
+    try:
+        if isinstance(dt, datetime):
+            return dt.strftime(fmt)
+        elif isinstance(dt, str):
+            return datetime.strptime(dt, "%Y-%m-%dT%H:%M:%S").strftime(fmt)
+        return ""
+    except (ValueError, TypeError) as e:
+        logging.warning(f"Failed to format datetime with format {fmt}: {e}")
+        return ""
+
 def write_outputs(prioritized_controls, output_dir, weights, config, total_risks, source_count, unmapped_techniques, validation_failures):
     """Write prioritized controls to JSON, CSV, and professional HTML outputs with summary metrics.
 
@@ -157,22 +177,27 @@ def write_outputs(prioritized_controls, output_dir, weights, config, total_risks
             logging.error(f"Template {template_path} not found. Please ensure controls.html exists in the templates directory.")
             return
         env = Environment(loader=FileSystemLoader(template_dir))
+        env.filters['strftime'] = strftime_filter  # Add custom strftime filter
         template = env.get_template('controls.html')
         current_date = datetime.now()
         data_period = f"{(current_date - timedelta(days=30*config.get('sources', [{}])[0].get('total_months', 6))).strftime('%Y-%m-%d')} to {get_last_saturday().strftime('%Y-%m-%d')}"
-        html_content = template.render(
-            csv_data=csv_data,
-            current_date=current_date.strftime('%B %d, %Y'),
-            data_period=data_period,
-            total_risks=total_risks,
-            source_count=source_count,
-            unmapped_techniques=unmapped_techniques,
-            validation_failures=validation_failures
-        )
-        html_path = os.path.join(output_dir, 'controls.html')
-        with open(html_path, 'w') as f:
-            f.write(html_content)
-        logging.info(f"Wrote HTML output to {html_path}")
+        try:
+            html_content = template.render(
+                csv_data=csv_data,
+                current_date=current_date,
+                data_period=data_period,
+                total_risks=total_risks,
+                source_count=source_count,
+                unmapped_techniques=unmapped_techniques,
+                validation_failures=validation_failures
+            )
+            html_path = os.path.join(output_dir, 'controls.html')
+            with open(html_path, 'w') as f:
+                f.write(html_content)
+            logging.info(f"Wrote HTML output to {html_path}")
+        except Exception as e:
+            logging.error(f"Failed to render HTML template: {e}")
+            # Continue to ensure JSON and CSV outputs are not affected
 
         logging.info("Completed writing outputs")
     except Exception as e:
@@ -213,7 +238,7 @@ def main():
         controls, control_details = map_risks_to_controls(all_risks, data_dir)
         prioritized_controls = normalize_and_prioritize(controls, weights)
 
-        # Extract summary metrics from logs (simplified; ideally, parse run.log or track during execution)
+        # Extract summary metrics from logs
         unmapped_techniques = len([line for line in open('outputs/run.log') if "No NIST controls mapped for technique" in line])
         validation_failures = len([line for line in open('outputs/run.log') if "CVSS 4.0 validation failed" in line])
 
