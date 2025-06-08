@@ -13,11 +13,7 @@ from .schema import load_schema, validate_json
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def load_cvss_schemas():
-    """Load CVSS schemas from the project root.
-
-    Returns:
-        dict: Dictionary of CVSS schemas by version.
-    """
+    """Load CVSS schemas from the project root."""
     schema_files = {
         '2.0': 'cvss-v2.0.json',
         '3.0': 'cvss-v3.0.json',
@@ -36,27 +32,13 @@ def load_cvss_schemas():
     return schemas
 
 def to_float(value):
-    """Convert value to float, handling Decimal types.
-
-    Args:
-        value: Value to convert.
-
-    Returns:
-        float: Converted value, or 0.0 if None.
-    """
+    """Convert value to float, handling Decimal types."""
     if isinstance(value, Decimal):
         return float(value)
     return float(value) if value is not None else 0.0
 
 def normalize_cvss_data(data):
-    """Recursively normalize CVSS data, handling None and NOT_DEFINED values.
-
-    Args:
-        data: Data to normalize.
-
-    Returns:
-        Normalized data structure, or None if invalid.
-    """
+    """Recursively normalize CVSS data, handling None and NOT_DEFINED values."""
     if isinstance(data, dict):
         normalized = {}
         required_fields = ['version', 'vectorString', 'baseScore', 'baseSeverity']
@@ -64,14 +46,20 @@ def normalize_cvss_data(data):
             'vulnerabilityResponseEffort', 'exploitMaturity', 'confidentialityRequirement',
             'integrityRequirement', 'availabilityRequirement', 'vulnConfidentialityImpact',
             'vulnIntegrityImpact', 'vulnAvailabilityImpact', 'subConfidentialityImpact',
-            'subIntegrityImpact', 'subAvailabilityImpact'
+            'subIntegrityImpact', 'subAvailabilityImpact', 'modifiedAttackVector',
+            'modifiedAttackComplexity', 'modifiedAttackRequirements', 'modifiedPrivilegesRequired',
+            'modifiedUserInteraction', 'modifiedVulnConfidentialityImpact',
+            'modifiedVulnIntegrityImpact', 'modifiedVulnAvailabilityImpact',
+            'modifiedSubConfidentialityImpact', 'modifiedSubIntegrityImpact',
+            'modifiedSubAvailabilityImpact', 'Safety', 'Automatable', 'Recovery',
+            'valueDensity', 'providerUrgency'
         ]
         for k, v in data.items():
             if k in required_fields and v is None:
-                logging.debug(f"Skipping CVSS data due to None value in required field: {k}")
+                logging.debug(f"Skipping CVSS data due to None in required field: {k}")
                 return None
-            elif k in optional_fields and v is None:
-                normalized[k] = "NOT_DEFINED"  # Set default for optional fields
+            elif k in optional_fields:
+                normalized[k] = "NOT_DEFINED" if v is None else v
             elif v == "NOT_DEFINED":
                 normalized[k] = None
             else:
@@ -86,15 +74,7 @@ def normalize_cvss_data(data):
     return data
 
 def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
-    """Parse NVD CVE JSON file and return a list of risks with API and schema validation.
-
-    Args:
-        file_path (str): Path to NVD CVE JSON file.
-        schema_path (str): Path to JSON schema for validation.
-
-    Returns:
-        list: List of parsed risk dictionaries.
-    """
+    """Parse NVD CVE JSON file and return a list of risks with API and schema validation."""
     try:
         logging.debug(f"Parsing NVD CVE file: {file_path}")
         cvss_schemas = load_cvss_schemas()
@@ -180,15 +160,21 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
                 pub_date = cve_data.get("published", "")
                 try:
                     if pub_date:
-                        pub_date = datetime.strptime(pub_date, "%Y-%m-%dT%H:%M:%S.%f")
+                        # Handle various NVD date formats
+                        for fmt in ["%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"]:
+                            try:
+                                pub_date = datetime.strptime(pub_date, fmt)
+                                break
+                            except ValueError:
+                                continue
+                        else:
+                            logging.warning(f"Failed to parse date '{pub_date}' for CVE {cve_id}")
+                            pub_date = None
                     else:
                         pub_date = None
-                except ValueError:
-                    try:
-                        pub_date = datetime.strptime(pub_date, "%Y-%m-%dT%H:%M:%S")
-                    except ValueError as e:
-                        logging.error(f"Failed to parse date '{pub_date}' in {file_path}: {e}")
-                        pub_date = None
+                except Exception as e:
+                    logging.error(f"Failed to parse date '{pub_date}' in {file_path}: {e}")
+                    pub_date = None
 
                 risks.append({
                     "mitigating_controls": ["SI-2", "RA-5"],
@@ -208,14 +194,7 @@ def parse_nvd_cve(file_path, schema_path="cve_api_json_2.0.schema"):
         return []
 
 def parse_cisa_kev(file_path):
-    """Parse CISA KEV CSV file and return a list of risks.
-
-    Args:
-        file_path (str): Path to CISA KEV CSV file.
-
-    Returns:
-        list: List of parsed risk dictionaries.
-    """
+    """Parse CISA KEV CSV file and return a list of risks."""
     try:
         logging.debug(f"Attempting to parse CISA KEV file: {file_path}")
         df = pd.read_csv(file_path)
@@ -245,15 +224,7 @@ def parse_cisa_kev(file_path):
         return []
 
 def parse_kev_attack_mapping(json_path, attack_mappings):
-    """Parse KEV to ATT&CK mapping JSON file and return a list of risks.
-
-    Args:
-        json_path (str): Path to KEV ATT&CK mapping JSON file.
-        attack_mappings (dict): ATT&CK to NIST control mappings.
-
-    Returns:
-        list: List of parsed risk dictionaries.
-    """
+    """Parse KEV to ATT&CK mapping JSON file and return a list of risks."""
     try:
         logging.debug(f"Attempting to parse KEV ATT&CK mapping file: {json_path}")
         with open(json_path, "r") as f:
@@ -283,7 +254,7 @@ def parse_kev_attack_mapping(json_path, attack_mappings):
                     controls.append(mapping.get("capability_id"))
             if not controls:
                 logging.warning(f"No NIST controls mapped for technique {technique_id} in CVE {cve_id}")
-                controls = ["SI-2"]
+                controls = ["SI-2", "RA-5"]  # Fallback to broader controls
             score = float(capability_scores.get(capability_group, 7.0))
             cwe_id = item.get("cwe_id", "") if item.get("cwe_id") else ""
             pub_date = item.get("published_date", "")
@@ -305,16 +276,7 @@ def parse_kev_attack_mapping(json_path, attack_mappings):
         return []
 
 def parse_all_datasets(data_dir, attack_mappings, config):
-    """Parse all enabled datasets and return a dictionary of risks by source.
-
-    Args:
-        data_dir (str): Directory containing dataset files.
-        attack_mappings (dict): ATT&CK to NIST control mappings.
-        config (dict): Configuration dictionary from config.json.
-
-    Returns:
-        dict: Dictionary of risks by source.
-    """
+    """Parse all enabled datasets and return a dictionary of risks by source."""
     all_risks = {}
 
     for source in config.get("sources", []):
