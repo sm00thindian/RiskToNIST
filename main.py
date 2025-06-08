@@ -82,17 +82,21 @@ def write_outputs(prioritized_controls, output_dir, weights, config, total_risks
         for cid, details in top_50:
             risk_contexts = details['risk_contexts']
             avg_priority = sum(
-                weights["exploitation"] * float(ctx.get('exploitation_score', 0.0)) +
-                weights["severity"] * float(ctx.get('impact_score', 0.0)) +
-                weights["applicability"] * float(details.get('applicability', 7.0))
+                (weights["exploitation"] * float(ctx.get('exploitation_score', 0.0)) +
+                 weights["severity"] * float(ctx.get('impact_score', 0.0)) +
+                 weights["applicability"] * float(details.get('applicability', 7.0))) *
+                (1.5 if ctx.get('published_date') and isinstance(ctx['published_date'], datetime) and ctx['published_date'] >= recent_threshold else 1.0)
                 for ctx in risk_contexts
             ) / len(risk_contexts) if risk_contexts else 0.0
-            # Prioritize recent risks in Top Risk IDs
+            # Prioritize recent risks by date and score
             top_risks = [
                 f"{ctx['cve_id']} ({ctx['exploitation_score']:.2f})"
                 for ctx in sorted(
                     risk_contexts,
-                    key=lambda x: (x.get('published_date', datetime.min), x.get('exploitation_score', 0.0)),
+                    key=lambda x: (
+                        x.get('published_date', datetime.min) if isinstance(x.get('published_date'), datetime) else datetime.min,
+                        x.get('exploitation_score', 0.0)
+                    ),
                     reverse=True
                 )[:3]
                 if ctx['cve_id']
