@@ -60,12 +60,20 @@ def normalize_cvss_data(data):
     if isinstance(data, dict):
         normalized = {}
         required_fields = ['version', 'vectorString', 'baseScore', 'baseSeverity']
+        optional_fields = [
+            'vulnerabilityResponseEffort', 'exploitMaturity', 'confidentialityRequirement',
+            'integrityRequirement', 'availabilityRequirement', 'vulnConfidentialityImpact',
+            'vulnIntegrityImpact', 'vulnAvailabilityImpact', 'subConfidentialityImpact',
+            'subIntegrityImpact', 'subAvailabilityImpact'
+        ]
         for k, v in data.items():
-            if v == "NOT_DEFINED":
-                normalized[k] = None
-            elif k in required_fields and v is None:
+            if k in required_fields and v is None:
                 logging.debug(f"Skipping CVSS data due to None value in required field: {k}")
                 return None
+            elif k in optional_fields and v is None:
+                normalized[k] = "NOT_DEFINED"  # Set default for optional fields
+            elif v == "NOT_DEFINED":
+                normalized[k] = None
             else:
                 normalized[k] = normalize_cvss_data(v)
         return normalized
