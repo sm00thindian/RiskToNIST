@@ -138,7 +138,6 @@ def write_outputs(prioritized_controls, output_dir, weights, config, total_risks
                 1 for ctx in risk_contexts
                 if ctx.get('published_date') and ctx['published_date'] >= recent_threshold
             )
-            source_diversity = len(set(ctx['source'] for ctx in risk_contexts))
             maturity_order = {"ATTACKED": 3, "PROOF_OF_CONCEPT": 2, "UNREPORTED": 1}
             max_maturity = max(
                 (maturity_order.get(ctx.get('exploit_maturity', 'UNREPORTED'), 1) for ctx in risk_contexts),
@@ -156,10 +155,6 @@ def write_outputs(prioritized_controls, output_dir, weights, config, total_risks
                 'Max Exploit Maturity': max_maturity,
                 'Risk Count': len(risk_contexts),
                 'Recent Risk Count': recent_count,
-                'CISA KEV Count': sum(1 for ctx in risk_contexts if ctx['source'] == 'cisa_kev'),
-                'NVD Count': sum(1 for ctx in risk_contexts if ctx['source'].startswith('nvd_')),
-                'Attack Mapping Count': sum(1 for ctx in risk_contexts if ctx['source'] == 'kev_attack'),
-                'Source Diversity': source_diversity,
                 'Top Risk IDs': ', '.join(top_risks),
                 'Unique CWEs': unique_cwes
             })
