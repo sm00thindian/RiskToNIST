@@ -9,16 +9,14 @@ def main():
         config = json.load(f)
     
     download_data(config['sources'])
-    kev_cves = parse_cisa_kev('data/cisa_kev.csv')
-    cve_to_techniques = parse_kev_attack_mapping('data/kev_attack_mapping.json')
-    technique_to_controls = parse_attack_mapping('data/attack_mapping.json')
+    kev_data = parse_cisa_kev('data/cisa_kev.json', 'data/cisa_kev_schema.json')
     nist_controls = parse_nist_catalog('data/nist_sp800_53_catalog.json')
     
-    control_to_risk, total_cves = calculate_control_risks(kev_cves, cve_to_techniques, technique_to_controls)
+    control_to_risk, cve_details, total_cves = calculate_control_risks(kev_data)
     
-    generate_json(control_to_risk, nist_controls, 'output.json')
-    generate_csv(control_to_risk, nist_controls, 'output.csv')
-    generate_html(control_to_risk, nist_controls, total_cves, 'output.html')
+    generate_json(control_to_risk, nist_controls, cve_details, 'output.json')
+    generate_csv(control_to_risk, nist_controls, cve_details, 'output.csv')
+    generate_html(control_to_risk, nist_controls, cve_details, total_cves, 'output.html')
 
 if __name__ == '__main__':
     main()
