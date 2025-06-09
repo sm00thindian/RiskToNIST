@@ -13,46 +13,6 @@
       "output": "cisa_kev.csv"
     },
     {
-      "name": "Verizon DBIR",
-      "url": "https://example.com/verizon_dbir.csv",
-      "type": "csv",
-      "enabled": false,
-      "output": "verizon_dbir.csv"
-    },
-    {
-      "name": "IBM Breach",
-      "url": "https://example.com/ibm_breach.csv",
-      "type": "csv",
-      "enabled": false,
-      "output": "ibm_breach.csv"
-    },
-    {
-      "name": "CrowdStrike",
-      "url": "https://example.com/crowdstrike.csv",
-      "type": "csv",
-      "enabled": false,
-      "output": "crowdstrike.csv"
-    },
-    {
-      "name": "Tenable",
-      "url": "https://example.com/tenable.csv",
-      "type": "csv",
-      "enabled": false,
-      "output": "tenable.csv"
-    },
-    {
-      "name": "NVD CVE",
-      "url": "https://services.nvd.nist.gov/rest/json/cves/2.0",
-      "type": "json_api",
-      "enabled": true,
-      "schema_url": "https://csrc.nist.gov/schema/nvd/api/2.0/cve_api_json_2.0.schema",
-      "schema_path": "cve_api_json_2.0.schema",
-      "total_months": 6,
-      "max_days": 60,
-      "default_days": 7,
-      "end_date_reference": "last_saturday"
-    },
-    {
       "name": "ATTACK Mapping",
       "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-16.1/nist_800_53-rev5/enterprise/nist_800_53-rev5_attack-16.1-enterprise_json.json",
       "type": "json",
