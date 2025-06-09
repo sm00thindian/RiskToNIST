@@ -107,7 +107,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         <section class="bg-white p-6 rounded-lg shadow-md mb-6">
             <h2 class="text-2xl font-semibold text-gray-800">About This Report</h2>
             <p class="mt-4 text-gray-600">
-                This report identifies cybersecurity risks in your systems by analyzing known vulnerabilities (CVEs) and mapping them to NIST SP 800-53 security controls. It highlights which controls are most at risk, helping you prioritize actions to strengthen your security posture. Each control is assigned a risk score based on the vulnerabilities associated with it, and controls are sorted from highest to lowest risk for clear decision-making.
+                This report identifies cybersecurity risks in our systems by analyzing known vulnerabilities (CVEs) and mapping them to NIST SP 800-53 security controls. It highlights which controls are most at risk, helping us prioritize actions to strengthen our security posture. Each control is assigned a risk score based on the vulnerabilities associated with it, and controls are sorted from highest to lowest risk for clear decision-making.
             </p>
         </section>
 
@@ -154,7 +154,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                             <td class="px-4 py-3 text-sm text-gray-600">{description}</td>
                             <td class="px-4 py-3 text-sm text-gray-600">{total_risk:.1f}</td>
                             <td class="px-4 py-3 text-sm">
-                                <a href="#cve-details-{control_id.lower()}" class="text-blue-600 hover:underline">{cve_count} CVE{'s' if cve_count != 1 else ''}</a>
+                                <a href="#cve-details-{control_id.lower()}" class="text-blue-600 hover:underline" onclick="expandCVE('{control_id.lower()}')">{cve_count} CVE{'s' if cve_count != 1 else ''}</a>
                             </td>
                         </tr>
         """
@@ -164,7 +164,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                 </table>
             </div>
             <p class="mt-4 text-gray-600 text-sm">
-                Note: Controls are sorted by total risk, with the highest-risk controls listed first. Click the CVE count to view detailed vulnerability information.
+                Note: Controls are sorted by total risk, with the highest-risk controls listed first. Click the CVE count to view detailed vulnerability information for each control. Use the Show/Hide buttons to expand or collapse CVE details.
             </p>
         </section>
 
@@ -180,36 +180,60 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         html_content += f"""
             <div id="cve-details-{control_id.lower()}" class="mb-6">
                 <h3 class="text-xl font-semibold text-gray-800 mb-2">CVEs for Control {control_id.upper()}</h3>
-                <table class="min-w-full bg-white border border-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">CVE ID</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Vulnerability Name</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Description</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Due Date</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200">
+                <button onclick="toggleCVE('{control_id.lower()}')" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none mb-4">
+                    <span id="toggle-text-{control_id.lower()}">Show CVEs</span>
+                </button>
+                <div id="cve-table-{control_id.lower()}" class="hidden">
+                    <table class="min-w-full bg-white border border-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">CVE ID</th>
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Vulnerability Name</th>
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Description</th>
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Due Date</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
         """
         for cve in info['cves']:
             cve_info = cve_details.get(cve, {'name': 'Unknown', 'description': 'No description available', 'dueDate': 'N/A'})
             html_content += f"""
-                        <tr>
-                            <td class="px-4 py-3 text-sm text-gray-600 font-mono">{cve}</td>
-                            <td class="px-4 py-3 text-sm text-gray-600">{cve_info['name']}</td>
-                            <td class="px-4 py-3 text-sm text-gray-600">{cve_info['description']}</td>
-                            <td class="px-4 py-3 text-sm text-gray-600">{cve_info['dueDate']}</td>
-                        </tr>
+                            <tr>
+                                <td class="px-4 py-3 text-sm text-gray-600 font-mono">{cve}</td>
+                                <td class="px-4 py-3 text-sm text-gray-600">{cve_info['name']}</td>
+                                <td class="px-4 py-3 text-sm text-gray-600">{cve_info['description']}</td>
+                                <td class="px-4 py-3 text-sm text-gray-600">{cve_info['dueDate']}</td>
+                            </tr>
             """
         html_content += """
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         """
 
-    # Close HTML content
+    # Add JavaScript for toggling CVE sections
     html_content += """
         </section>
+
+        <!-- JavaScript for Toggling CVE Details -->
+        <script>
+            function toggleCVE(controlId) {
+                const table = document.getElementById(`cve-table-${controlId}`);
+                const toggleText = document.getElementById(`toggle-text-${controlId}`);
+                table.classList.toggle('hidden');
+                toggleText.textContent = table.classList.contains('hidden') ? 'Show CVEs' : 'Hide CVEs';
+            }
+
+            function expandCVE(controlId) {
+                const table = document.getElementById(`cve-table-${controlId}`);
+                const toggleText = document.getElementById(`toggle-text-${controlId}`);
+                if (table.classList.contains('hidden')) {
+                    table.classList.remove('hidden');
+                    toggleText.textContent = 'Hide CVEs';
+                }
+            }
+        </script>
 
         <!-- Footer -->
         <footer class="mt-6 text-center text-gray-500 text-sm">
