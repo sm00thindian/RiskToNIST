@@ -154,7 +154,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                             <td class="px-4 py-3 text-sm text-gray-600">{description}</td>
                             <td class="px-4 py-3 text-sm text-gray-600">{total_risk:.1f}</td>
                             <td class="px-4 py-3 text-sm">
-                                <a href="#cve-details-{control_id.lower()}" class="text-blue-600 hover:underline" onclick="expandCVE('{control_id.lower()}')">{cve_count} CVE{'s' if cve_count != 1 else ''}</a>
+                                <a href="#cve-details-{control_id.lower()}" class="text-blue-600 hover:underline" onclick="expandCVE('{{control_id.lower()}}')">{cve_count} CVE{'s' if cve_count != 1 else ''}</a>
                             </td>
                         </tr>
         """
@@ -180,10 +180,10 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         html_content += f"""
             <div id="cve-details-{control_id.lower()}" class="mb-6">
                 <h3 class="text-xl font-semibold text-gray-800 mb-2">CVEs for Control {control_id.upper()}</h3>
-                <button onclick="toggleCVE('{control_id.lower()}')" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none mb-4">
-                    <span id="toggle-text-{control_id.lower()}">Show CVEs</span>
+                <button onclick="toggleCVE('{{control_id.lower()}}')" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none mb-4">
+                    <span id="toggle-text-{{control_id.lower()}}">Show CVEs</span>
                 </button>
-                <div id="cve-table-{control_id.lower()}" class="hidden">
+                <div id="cve-table-{{control_id.lower()}}" class="hidden">
                     <table class="min-w-full bg-white border border-gray-200">
                         <thead class="bg-gray-50">
                             <tr>
@@ -218,21 +218,21 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
 
         <!-- JavaScript for Toggling CVE Details -->
         <script>
-            function toggleCVE(controlId) {
-                const table = document.getElementById(`cve-table-${controlId}`);
-                const toggleText = document.getElementById(`toggle-text-${controlId}`);
+            function toggleCVE(controlId) {{
+                const table = document.getElementById(`cve-table-${{controlId}}`);
+                const toggleText = document.getElementById(`toggle-text-${{controlId}}`);
                 table.classList.toggle('hidden');
                 toggleText.textContent = table.classList.contains('hidden') ? 'Show CVEs' : 'Hide CVEs';
-            }
+            }}
 
-            function expandCVE(controlId) {
-                const table = document.getElementById(`cve-table-${controlId}`);
-                const toggleText = document.getElementById(`toggle-text-${controlId}`);
-                if (table.classList.contains('hidden')) {
+            function expandCVE(controlId) {{
+                const table = document.getElementById(`cve-table-${{controlId}}`);
+                const toggleText = document.getElementById(`toggle-text-${{controlId}}`);
+                if (table.classList.contains('hidden')) {{
                     table.classList.remove('hidden');
                     toggleText.textContent = 'Hide CVEs';
-                }
-            }
+                }}
+            }}
         </script>
 
         <!-- Footer -->
