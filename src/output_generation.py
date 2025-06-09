@@ -125,14 +125,16 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
 
             
                 
-                    Row
-                    Control ID
-                    Family
-                    Control Description
-                    Total Risk
-                    Associated CVEs
+                    <tr>
+                        <th>Row</th>
+                        <th>Control ID</th>
+                        <th>Family</th>
+                        <th>Control Description</th>
+                        <th>Total Risk</th>
+                        <th>Associated CVEs</th>
+                    </tr>
                 
-                
+                <tbody>
     """.format(
         generation_date=datetime.now().strftime("%B %d, %Y"),
         total_cves=total_cves
@@ -190,9 +192,16 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                     Show CVEs
                 
                 
-                    CVE ID	Vulnerability Name	Description	Due Date
-
-
+                    <table class="table table-bordered" id="cve-{control_id.lower()}" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>CVE ID</th>
+                                <th>Vulnerability Name</th>
+                                <th>Description</th>
+                                <th>Due Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
         """
         # Sort CVEs by dueDate in descending order (newest first)
         sorted_cves = sorted(
@@ -207,15 +216,17 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         for cve in sorted_cves:
             cve_info = cve_details.get(cve, {'name': 'Unknown', 'description': 'No description available', 'dueDate': 'N/A'})
             html_content += f"""
-                            <a href='https://nvd.nist.gov/vuln/detail/{cve}' target='_blank'>{cve}</a>	{cve_info['name']}	{cve_info['description']}	{cve_info['dueDate']}
-
-
+                            <tr>
+                                <td><a href='https://nvd.nist.gov/vuln/detail/{cve}' target='_blank'>{cve}</a></td>
+                                <td>{cve_info['name']}</td>
+                                <td>{cve_info['description']}</td>
+                                <td>{cve_info['dueDate']}</td>
+                            </tr>
             """
         html_content += """
-                        
-                    
+                        </tbody>
+                    </table>
                 
-
             
 
         """
@@ -234,55 +245,8 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         
     
 
-
     """.format(year=datetime.now().year)
 
     # Write to output file
     with open(output_file, 'w') as f:
         f.write(html_content)
-
-```
-
-### Changes Made
-1. **Added Table Structure**:
-   - Wrapped the header in a `<table>`, `<thead>`, and `<tr>` with `<th>` tags for each column (`Row`, `Control ID`, `Family`, `Control Description`, `Total Risk`, `Associated CVEs`).
-   - Wrapped the rows in a `<tbody>` with each row in a `<tr>` and columns in `<td>` tags.
-   - Ensured the CVE count `<a>` tag is properly nested within a `<td>`.
-
-2. **Maintained Existing Functionality**:
-   - Kept the `idx` for row numbering, matching the existing logic.
-   - Preserved the `onclick` JavaScript toggle and anchor link (`href="#cve-{control_id.lower()}"`) for the CVE count.
-   - Ensured the table is still within the `<div class="table-container table-responsive">` for styling.
-
-3. **Closed Tags Properly**:
-   - Added `</tbody>`, `</table>`, and `</div>` to close the table structure before the note section.
-
-### Expected Output
-The updated code will produce an `output.html` where the "Risk-Based Control Assessment" section renders as a proper HTML table, like this:
-
-```html
-<div class="table-container table-responsive">
-    <table class="table table-bordered">
-        <thead>
-            <tr>
-                <th>Row</th>
-                <th>Control ID</th>
-                <th>Family</th>
-                <th>Control Description</th>
-                <th>Total Risk</th>
-                <th>Associated CVEs</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>1</td>
-                <td>SI-4</td>
-                <td>System and Information Integrity</td>
-                <td>System Monitoring</td>
-                <td>444.0</td>
-                <td><a href="#cve-si-4" onclick="toggleCVE('si-4')">296 CVEs</a></td>
-            </tr>
-            <!-- Additional rows -->
-        </tbody>
-    </table>
-</div>
