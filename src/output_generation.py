@@ -195,7 +195,17 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                         </thead>
                         <tbody class="divide-y divide-gray-200">
         """
-        for cve in info['cves']:
+        # Sort CVEs by dueDate in descending order (newest first)
+        sorted_cves = sorted(
+            info['cves'],
+            key=lambda cve: (
+                datetime.strptime(cve_details[cve]['dueDate'], '%Y-%m-%d')
+                if cve_details[cve]['dueDate'] != 'N/A'
+                else datetime.min
+            ),
+            reverse=True
+        )
+        for cve in sorted_cves:
             cve_info = cve_details.get(cve, {'name': 'Unknown', 'description': 'No description available', 'dueDate': 'N/A'})
             html_content += f"""
                             <tr>
