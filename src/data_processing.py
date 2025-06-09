@@ -1,6 +1,7 @@
 import json
 from jsonschema import validate, ValidationError
 from datetime import datetime
+from collections import defaultdict
 
 def parse_cisa_kev(file_path, schema_path):
     try:
@@ -25,10 +26,33 @@ def parse_cisa_kev(file_path, schema_path):
     } for item in data['vulnerabilities']]
 
 def parse_kev_attack_mapping(file_path):
-    with open(file_path, 'r') as f:
-        data = json.load(f)
-        # Expected: {"cve": ["T1234", "T5678"], ...}
-        return data
+    try:
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        # Check for expected structure
+        if 'mapping_objects' not in data:
+            raise ValueError("Invalid KEV ATT&CK mapping JSON structure: missing 'mapping_objects'")
+        
+        # Build CVE to techniques mapping
+        cve_to_techniques = defaultdict(list)
+        for obj in data['mapping_objects']:
+            cve = obj.get('capability_id')
+            technique = obj.get('attack_object_id')
+            if cve and technique:
+                cve_to_techniques[cve].append(technique)
+        
+        if not cve_to_techniques:
+            raise ValueError("No valid CVE-to-technique mappings found in KEV ATT&CK JSON")
+        
+        return dict(cve_to_techniques)
+    
+    except json.JSONDecodeError as e:
+        print(f"Invalid JSON in KEV ATT&CK mapping file: {e}")
+        raise
+    except KeyError as e:
+        print(f"Unexpected structure in KEV ATT&CK mapping JSON: missing key {e}")
+        raise
 
 def parse_attack_mapping(file_path):
     with open(file_path, 'r') as f:
