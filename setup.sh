@@ -8,13 +8,25 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-echo "Creating virtual environment..."
-if [ ! -d "venv" ]; then
-    python3 -m venv venv
+echo "Checking OpenSSL version..."
+PYTHON_OPENSSL_VERSION=$(python3 -c "import ssl; print(ssl.OPENSSL_VERSION)")
+echo "Python is using: $PYTHON_OPENSSL_VERSION"
+if [[ "$PYTHON_OPENSSL_VERSION" =~ "OpenSSL 1.0" ]]; then
+    echo "Detected OpenSSL 1.0.x, ensuring urllib3<2.0 is used."
 fi
+
+echo "Creating virtual environment..."
+if [ -d "venv" ]; then
+    echo "Removing existing virtual environment..."
+    rm -rf venv
+fi
+python3 -m venv venv
 
 echo "Activating virtual environment..."
 source venv/bin/activate
+
+echo "Upgrading pip..."
+pip install --upgrade pip
 
 echo "Installing dependencies..."
 pip install -r requirements.txt
