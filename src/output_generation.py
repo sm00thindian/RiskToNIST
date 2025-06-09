@@ -193,9 +193,8 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         )
         for cve in sorted_cves:
             cve_info = cve_details.get(cve, {'name': 'Unknown', 'description': 'No description available', 'dueDate': 'N/A'})
-            cve_link = f"https://nvd.nist.gov/vuln/detail/{cve}"
             html_content += f"""
-                            <a href='{cve_link}' target='_blank'>{cve}</a>	{cve_info['name']}	{cve_info['description']}	{cve_info['dueDate']}
+                            <a href='https://nvd.nist.gov/vuln/detail/{cve}' target='_blank'>{cve}</a>	{cve_info['name']}	{cve_info['description']}	{cve_info['dueDate']}
 
 
             """
