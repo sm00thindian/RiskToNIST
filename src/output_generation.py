@@ -1,6 +1,5 @@
 import json
 import pandas as pd
-import plotly.express as px
 import logging
 from datetime import datetime
 
@@ -33,7 +32,7 @@ def generate_json(control_to_risk, nist_controls, cve_details, output_file):
             logger.warning(f"Skipping control {control} due to missing data: {e}")
             continue
     data.sort(key=lambda x: x['total_risk'], reverse=True)
-    with open(output_file, 'w') as f:
+    with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
 
 def generate_csv(control_to_risk, nist_controls, cve_details, output_file):
@@ -124,17 +123,18 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
             Risk-Based Control Assessment
 
             
-                
-                    <tr>
-                        <th>Row</th>
-                        <th>Control ID</th>
-                        <th>Family</th>
-                        <th>Control Description</th>
-                        <th>Total Risk</th>
-                        <th>Associated CVEs</th>
-                    </tr>
-                
-                <tbody>
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Row</th>
+                            <th>Control ID</th>
+                            <th>Family</th>
+                            <th>Control Description</th>
+                            <th>Total Risk</th>
+                            <th>Associated CVEs</th>
+                        </tr>
+                    </thead>
+                    <tbody>
     """.format(
         generation_date=datetime.now().strftime("%B %d, %Y"),
         total_cves=total_cves
@@ -149,23 +149,23 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         cve_count = len(info['cves'])
 
         html_content += f"""
-                    <tr>
-                        <td>{idx}</td>
-                        <td>{control_id.upper()}</td>
-                        <td>{family}</td>
-                        <td>{description}</td>
-                        <td>{total_risk:.1f}</td>
-                        <td>
-                            <a href="#cve-{control_id.lower()}" onclick="toggleCVE('{control_id.lower()}')">
-                                {cve_count} CVE{'s' if cve_count != 1 else ''}
-                            </a>
-                        </td>
-                    </tr>
+                        <tr>
+                            <td>{idx}</td>
+                            <td>{control_id.upper()}</td>
+                            <td>{family}</td>
+                            <td>{description}</td>
+                            <td>{total_risk:.1f}</td>
+                            <td>
+                                <a href="#cve-{control_id.lower()}" onclick="toggleCVE('{control_id.lower()}')">
+                                    {cve_count} CVE{'s' if cve_count != 1 else ''}
+                                </a>
+                            </td>
+                        </tr>
         """
 
     html_content += """
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
             
 
             
@@ -248,5 +248,5 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
     """.format(year=datetime.now().year)
 
     # Write to output file
-    with open(output_file, 'w') as f:
+    with open(output_file, 'w', encoding='utf-8') as f:
         f.write(html_content)
