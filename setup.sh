@@ -19,11 +19,6 @@ source venv/bin/activate
 echo "Installing dependencies..."
 pip install -r requirements.txt
 
-if [ ! -f "satisfied_controls.txt" ]; then
-    echo "satisfied_controls.txt not found. Please create this file with the list of satisfied NIST controls."
-    exit 1
-fi
-
 echo "Running Risktonist..."
 python run.py
 
