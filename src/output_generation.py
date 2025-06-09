@@ -110,18 +110,18 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
     # Summary statistics
     total_mitigated = sum(info['total_risk'] for info in control_to_risk.values()) if control_to_risk else 0
     
-    # Write HTML
+    # Write HTML with escaped CSS braces
     with open(output_file, 'w') as f:
         f.write("""
         <html>
         <head>
             <title>Risktonist Report</title>
             <style>
-                body { font-family: Arial, sans-serif; margin: 20px; }
-                table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                th { background-color: #f2f2f2; }
-                h2 { margin-top: 30px; }
+                body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
+                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+                th {{ background-color: #f2f2f2; }}
+                h2 {{ margin-top: 30px; }}
             </style>
         </head>
         <body>
