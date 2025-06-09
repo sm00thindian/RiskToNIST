@@ -124,9 +124,15 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
             Risk-Based Control Assessment
 
             
-                Row	Control ID	Family	Control Description	Total Risk	Associated CVEs
-
-
+                
+                    Row
+                    Control ID
+                    Family
+                    Control Description
+                    Total Risk
+                    Associated CVEs
+                
+                
     """.format(
         generation_date=datetime.now().strftime("%B %d, %Y"),
         total_cves=total_cves
@@ -141,16 +147,23 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         cve_count = len(info['cves'])
 
         html_content += f"""
-                        {idx}	{control_id.upper()}	{family}	{description}	{total_risk:.1f}	
+                    <tr>
+                        <td>{idx}</td>
+                        <td>{control_id.upper()}</td>
+                        <td>{family}</td>
+                        <td>{description}</td>
+                        <td>{total_risk:.1f}</td>
+                        <td>
+                            <a href="#cve-{control_id.lower()}" onclick="toggleCVE('{control_id.lower()}')">
                                 {cve_count} CVE{'s' if cve_count != 1 else ''}
-                            
-
-
+                            </a>
+                        </td>
+                    </tr>
         """
 
     html_content += """
-                    
-                
+                </tbody>
+            </table>
             
 
             
@@ -227,3 +240,49 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
     # Write to output file
     with open(output_file, 'w') as f:
         f.write(html_content)
+
+```
+
+### Changes Made
+1. **Added Table Structure**:
+   - Wrapped the header in a `<table>`, `<thead>`, and `<tr>` with `<th>` tags for each column (`Row`, `Control ID`, `Family`, `Control Description`, `Total Risk`, `Associated CVEs`).
+   - Wrapped the rows in a `<tbody>` with each row in a `<tr>` and columns in `<td>` tags.
+   - Ensured the CVE count `<a>` tag is properly nested within a `<td>`.
+
+2. **Maintained Existing Functionality**:
+   - Kept the `idx` for row numbering, matching the existing logic.
+   - Preserved the `onclick` JavaScript toggle and anchor link (`href="#cve-{control_id.lower()}"`) for the CVE count.
+   - Ensured the table is still within the `<div class="table-container table-responsive">` for styling.
+
+3. **Closed Tags Properly**:
+   - Added `</tbody>`, `</table>`, and `</div>` to close the table structure before the note section.
+
+### Expected Output
+The updated code will produce an `output.html` where the "Risk-Based Control Assessment" section renders as a proper HTML table, like this:
+
+```html
+<div class="table-container table-responsive">
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Row</th>
+                <th>Control ID</th>
+                <th>Family</th>
+                <th>Control Description</th>
+                <th>Total Risk</th>
+                <th>Associated CVEs</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td>SI-4</td>
+                <td>System and Information Integrity</td>
+                <td>System Monitoring</td>
+                <td>444.0</td>
+                <td><a href="#cve-si-4" onclick="toggleCVE('si-4')">296 CVEs</a></td>
+            </tr>
+            <!-- Additional rows -->
+        </tbody>
+    </table>
+</div>
