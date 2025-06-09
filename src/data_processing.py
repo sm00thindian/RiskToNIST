@@ -75,8 +75,8 @@ def parse_attack_mapping(file_path):
                 technique = obj.get('attack_object_id')
                 control = obj.get('capability_id')
                 if technique and control and isinstance(control, str):
-                    # Normalize control ID: lowercase and strip leading zero (e.g., CA-07 -> ca-7)
-                    normalized_control = re.sub(r'^([a-zA-Z]+)-0*(\d+)$', r'\1-\2', control.lower())
+                    # Normalize control ID: uppercase and strip leading zero (e.g., CA-07 -> CA-7)
+                    normalized_control = re.sub(r'^([a-zA-Z]+)-0*(\d+)$', r'\1-\2', control.upper())
                     technique_to_controls[technique].append(normalized_control)
         
         if not technique_to_controls:
@@ -108,11 +108,13 @@ def parse_nist_catalog(file_path):
                 for control in group['controls']:
                     control_id = control.get('id')
                     if control_id:
-                        controls_dict[control_id] = {
+                        # Normalize control ID to uppercase (e.g., ca-7 -> CA-7)
+                        normalized_control_id = control_id.upper()
+                        controls_dict[normalized_control_id] = {
                             'title': control.get('title', 'N/A'),
                             'family': group_title
                         }
-                        logger.debug(f"Parsed NIST control: {control_id}")
+                        logger.debug(f"Parsed NIST control: {normalized_control_id}")
         
         if not controls_dict:
             raise ValueError("No controls found in NIST SP 800-53 JSON")
