@@ -26,23 +26,22 @@ def generate_html(control_to_risk, nist_controls, total_cves, output_file):
     df = pd.DataFrame(data).sort_values(by="total_risk", ascending=False)
     
     # Bar chart for top 10 controls
-    bar_fig = px.bar(df.head(10), x="control_id", y="total_risk", title="Top 10 Controls by KEVs Mitigated")
+    bar_fig = px.bar(df.head(10), x="control_id", y="total_risk", title="Top 10 Controls by KEVs Mitigated",
+                     labels={"total_risk": "Number of KEVs Mitigated", "control_id": "Control ID"})
     
     # Family pie chart
     family_risk = df.groupby("family")["total_risk"].sum().reset_index()
     pie_fig = px.pie(family_risk, values="total_risk", names="family", title="KEVs Mitigated by Control Family")
     
+    # Summary statistics
+    total_mitigated = sum(control_to_risk.values())
+    
     # Write HTML
     with open(output_file, 'w') as f:
-        f.write("<html><body>")
-        f.write("<h1>Risktonist Report</h1>")
-        f.write("<h2>Summary</h2>")
-        f.write(f"<p>Total number of KEVs: {total_cves}</p>")
-        f.write(f"<p>Number of controls mitigating at least one KEV: {len(control_to_risk)}</p>")
-        f.write("<h2>Prioritized Controls</h2>")
-        f.write(df.to_html(index=False))
-        f.write("<h2>Top 10 Controls by KEVs Mitigated</h2>")
-        f.write(bar_fig.to_html(full_html=False))
-        f.write("<h2>KEVs Mitigated by Control Family</h2>")
-        f.write(pie_fig.to_html(full_html=False))
-        f.write("</body></html>")
+        f.write("""
+        <html>
+        <head>
+            <title>Risktonist Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                table { border-collapse:
