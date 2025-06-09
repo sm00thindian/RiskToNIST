@@ -8,6 +8,14 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
+echo "Checking Python version..."
+PYTHON_VERSION=$(python3 --version | awk '{print $2}')
+MINIMUM_VERSION="3.7"
+if [[ "$(printf '%s\n' "$PYTHON_VERSION" "$MINIMUM_VERSION" | sort -V | head -n1)" != "$MINIMUM_VERSION" ]]; then
+    echo "Python version $PYTHON_VERSION is too old. Please use Python 3.7 or newer."
+    exit 1
+fi
+
 echo "Checking OpenSSL version..."
 PYTHON_OPENSSL_VERSION=$(python3 -c "import ssl; print(ssl.OPENSSL_VERSION)" 2>/dev/null || echo "Unknown")
 echo "Python is using: $PYTHON_OPENSSL_VERSION"
@@ -36,10 +44,11 @@ DATA_FILES=("cisa_kev.json" "cisa_kev_schema.json" "attack_mapping.json" "kev_at
 for FILE in "${DATA_FILES[@]}"; do
     if [ ! -f "data/$FILE" ]; then
         echo "Warning: $FILE not found in data/. Attempting to download..."
-        python run.py --download-only 2>/dev/null || {
-            echo "Error: Failed to download $FILE. Ensure URLs in config.json are valid."
+        python -c "from src.data_ingestion import download_data; import json; with open('config.json', 'r') as f: config = json.load(f); download_data(config['sources'])" 2>&1 | tee download.log
+        if [ ! -f "data/$FILE" ]; then
+            echo "Error: Failed to download $FILE. Check download.log for details and ensure URLs in config.json are valid."
             exit 1
-        }
+        fi
     fi
 done
 
