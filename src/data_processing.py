@@ -37,7 +37,35 @@ def parse_attack_mapping(file_path):
         return data
 
 def parse_nist_catalog(file_path):
-    with open(file_path, 'r') as f:
-        data = json.load(f)
-        # Expected: {"catalog": {"controls": [{"id": "AC-1", "title": "...", "family": "Access Control"}, ...]}}
-        return {control['id']: {"title": control['title'], "family": control.get('family', 'Unknown')} for control in data['catalog']['controls']}
+    try:
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        # Check for expected structure
+        if 'catalog' not in data or 'groups' not in data['catalog']:
+            raise ValueError("Invalid NIST SP 800-53 JSON structure: missing 'catalog' or 'groups'")
+        
+        # Extract controls from groups
+        controls_dict = {}
+        for group in data['catalog']['groups']:
+            group_title = group.get('title', 'Unknown')
+            if 'controls' in group:
+                for control in group['controls']:
+                    control_id = control.get('id')
+                    if control_id:
+                        controls_dict[control_id] = {
+                            'title': control.get('title', 'N/A'),
+                            'family': group_title
+                        }
+        
+        if not controls_dict:
+            raise ValueError("No controls found in NIST SP 800-53 JSON")
+        
+        return controls_dict
+    
+    except json.JSONDecodeError as e:
+        print(f"Invalid JSON in NIST catalog file: {e}")
+        raise
+    except KeyError as e:
+        print(f"Unexpected structure in NIST catalog JSON: missing key {e}")
+        raise
