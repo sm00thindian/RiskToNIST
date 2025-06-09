@@ -55,10 +55,32 @@ def parse_kev_attack_mapping(file_path):
         raise
 
 def parse_attack_mapping(file_path):
-    with open(file_path, 'r') as f:
-        data = json.load(f)
-        # Expected: {"technique": ["AC-1", "AC-2"], ...}
+    try:
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        # Validate structure: expect dict mapping techniques to lists of controls
+        if not isinstance(data, dict):
+            raise ValueError("Invalid ATT&CK mapping JSON: expected a dictionary")
+        
+        for technique, controls in data.items():
+            if not isinstance(controls, list):
+                raise ValueError(f"Invalid ATT&CK mapping JSON: controls for technique {technique} must be a list")
+            for control in controls:
+                if not isinstance(control, str):
+                    raise ValueError(f"Invalid ATT&CK mapping JSON: control {control} for technique {technique} must be a string")
+        
+        if not data:
+            raise ValueError("No valid technique-to-control mappings found in ATT&CK JSON")
+        
         return data
+    
+    except json.JSONDecodeError as e:
+        print(f"Invalid JSON in ATT&CK mapping file: {e}")
+        raise
+    except KeyError as e:
+        print(f"Unexpected structure in ATT&CK mapping JSON: missing key {e}")
+        raise
 
 def parse_nist_catalog(file_path):
     try:
