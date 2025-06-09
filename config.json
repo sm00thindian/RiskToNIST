@@ -1,37 +1,8 @@
 {
-  "weights": {
-    "exploitation": 0.4,
-    "severity": 0.4,
-    "applicability": 0.2
-  },
   "sources": [
-    {
-      "name": "CISA KEV",
-      "url": "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv",
-      "type": "csv",
-      "enabled": true,
-      "output": "cisa_kev.csv"
-    },
-    {
-      "name": "ATTACK Mapping",
-      "url": "https://center-for-threat-informed-defense.github.io/mappings-explorer/data/nist_800_53/attack-16.1/nist_800_53-rev5/enterprise/nist_800_53-rev5_attack-16.1-enterprise_json.json",
-      "type": "json",
-      "enabled": true,
-      "output": "attack_mapping.json"
-    },
-    {
-      "name": "KEV ATTACK Mapping",
-      "url": "https://raw.githubusercontent.com/center-for-threat-informed-defense/mappings-explorer/refs/heads/main/mappings/kev/attack-15.1/kev-02.13.2025/enterprise/kev-02.13.2025_attack-15.1-enterprise.json",
-      "type": "json",
-      "enabled": true,
-      "output": "kevvcxn_attack_mapping.json"
-    },
-    {
-      "name": "NIST SP 800-53 Catalog",
-      "url": "https://github.com/usnistgov/oscal-content/raw/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
-      "type": "json",
-      "enabled": true,
-      "output": "nist_sp800_53_catalog.json"
-    }
+    {"name": "CISA KEV", "url": "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv", "output": "cisa_kev.csv", "enabled": true},
+    {"name": "ATTACK Mapping", "url": "https://example.com/attack_mapping.json", "output": "attack_mapping.json", "enabled": true},
+    {"name": "KEV ATTACK Mapping", "url": "https://example.com/kev_attack_mapping.json", "output": "kev_attack_mapping.json", "enabled": true},
+    {"name": "NIST SP 800-53 Catalog", "url": "https://example.com/nist_sp800_53_catalog.json", "output": "nist_sp800_53_catalog.json", "enabled": true}
   ]
 }
