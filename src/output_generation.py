@@ -12,21 +12,26 @@ def generate_json(control_to_risk, nist_controls, cve_details, output_file):
         logger.warning("No controls mapped to CVEs. JSON output will be empty.")
     data = []
     for control, info in control_to_risk.items():
-        cve_list = [
-            {
-                'cveID': cve,
-                'vulnerabilityName': cve_details[cve]['name'],
-                'shortDescription': cve_details[cve]['description'],
-                'dueDate': cve_details[cve]['dueDate']
-            } for cve in info['cves']
-        ]
-        data.append({
-            'control_id': control,
-            'family': nist_controls[control]['family'],
-            'description': nist_controls[control]['title'],
-            'total_risk': info['total_risk'],
-            'cves': cve_list
-        })
+        try:
+            cve_list = [
+                {
+                    'cveID': cve,
+                    'vulnerabilityName': cve_details[cve]['name'],
+                    'shortDescription': cve_details[cve]['description'],
+                    'dueDate': cve_details[cve]['dueDate']
+                } for cve in info['cves']
+            ]
+            control_info = nist_controls.get(control.upper(), {'family': 'Unknown', 'title': 'Unknown'})
+            data.append({
+                'control_id': control,
+                'family': control_info['family'],
+                'description': control_info['title'],
+                'total_risk': info['total_risk'],
+                'cves': cve_list
+            })
+        except KeyError as e:
+            logger.warning(f"Skipping control {control} due to missing data: {e}")
+            continue
     data.sort(key=lambda x: x['total_risk'], reverse=True)
     with open(output_file, 'w') as f:
         json.dump(data, f, indent=2)
@@ -42,17 +47,22 @@ def generate_csv(control_to_risk, nist_controls, cve_details, output_file):
         if 'total_risk' not in info or 'cves' not in info:
             logger.error(f"Invalid control_to_risk entry for {control}: {info}")
             continue
-        for cve in info['cves']:
-            records.append({
-                'control_id': control,
-                'family': nist_controls[control]['family'],
-                'control_description': nist_controls[control]['title'],
-                'total_risk': info['total_risk'],
-                'cveID': cve,
-                'vulnerabilityName': cve_details[cve]['name'],
-                'shortDescription': cve_details[cve]['description'],
-                'dueDate': cve_details[cve]['dueDate']
-            })
+        try:
+            control_info = nist_controls.get(control.upper(), {'family': 'Unknown', 'title': 'Unknown'})
+            for cve in info['cves']:
+                records.append({
+                    'control_id': control,
+                    'family': control_info['family'],
+                    'control_description': control_info['title'],
+                    'total_risk': info['total_risk'],
+                    'cveID': cve,
+                    'vulnerabilityName': cve_details[cve]['name'],
+                    'shortDescription': cve_details[cve]['description'],
+                    'dueDate': cve_details[cve]['dueDate']
+                })
+        except KeyError as e:
+            logger.warning(f"Skipping control {control} due to missing data: {e}")
+            continue
     
     if not records:
         logger.warning("No valid records generated for CSV output.")
@@ -110,17 +120,17 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         </section>
 
         <!-- Controls Table -->
-        <section class="bg-white p-6 rounded-lg shadow-md">
-            <h2 class="text-2xl font-semibold text-gray-800">Risk-Based Control Assessment</h2>
-            <div class="overflow-x-auto mt-4">
+        <section class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Risk-Based Control Assessment</h2>
+            <div class="overflow-x-auto">
                 <table class="min-w-full bg-white border border-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b">Control ID</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b">Family</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b">Control Description</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b">Total Risk</th>
-                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b">Associated CVEs</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Control ID</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Family</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Control Description</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Total Risk</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Associated CVEs</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
@@ -131,30 +141,74 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
 
     # Add table rows for each control
     for control_id, info in sorted_controls:
-        control_info = nist_controls.get(control_id, {})
+        control_info = nist_controls.get(control_id.upper(), {'family': 'Unknown', 'title': 'No description available'})
         family = control_info.get('family', 'Unknown')
         description = control_info.get('title', 'No description available')
         total_risk = info['total_risk']
-        cve_list = ", ".join(info['cves']) if info['cves'] else "None"
+        cve_count = len(info['cves'])
 
         html_content += f"""
                         <tr>
-                            <td class="px-4 py-3 text-sm text-gray-600">{control_id}</td>
+                            <td class="px-4 py-3 text-sm text-gray-600 font-mono">{control_id.upper()}</td>
                             <td class="px-4 py-3 text-sm text-gray-600">{family}</td>
                             <td class="px-4 py-3 text-sm text-gray-600">{description}</td>
                             <td class="px-4 py-3 text-sm text-gray-600">{total_risk:.1f}</td>
-                            <td class="px-4 py-3 text-sm text-gray-600">{cve_list}</td>
+                            <td class="px-4 py-3 text-sm">
+                                <a href="#cve-details-{control_id.lower()}" class="text-blue-600 hover:underline">{cve_count} CVE{'s' if cve_count != 1 else ''}</a>
+                            </td>
                         </tr>
         """
 
-    # Close HTML content
     html_content += """
                     </tbody>
                 </table>
             </div>
             <p class="mt-4 text-gray-600 text-sm">
-                Note: Controls are sorted by total risk, with the highest-risk controls listed first. Review these controls and their associated vulnerabilities to prioritize remediation efforts.
+                Note: Controls are sorted by total risk, with the highest-risk controls listed first. Click the CVE count to view detailed vulnerability information.
             </p>
+        </section>
+
+        <!-- CVE Details Sections -->
+        <section class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Detailed CVE Information</h2>
+    """
+
+    # Add detailed CVE sections for each control
+    for control_id, info in sorted_controls:
+        if not info['cves']:
+            continue
+        html_content += f"""
+            <div id="cve-details-{control_id.lower()}" class="mb-6">
+                <h3 class="text-xl font-semibold text-gray-800 mb-2">CVEs for Control {control_id.upper()}</h3>
+                <table class="min-w-full bg-white border border-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">CVE ID</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Vulnerability Name</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Description</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 border-b">Due Date</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+        """
+        for cve in info['cves']:
+            cve_info = cve_details.get(cve, {'name': 'Unknown', 'description': 'No description available', 'dueDate': 'N/A'})
+            html_content += f"""
+                        <tr>
+                            <td class="px-4 py-3 text-sm text-gray-600 font-mono">{cve}</td>
+                            <td class="px-4 py-3 text-sm text-gray-600">{cve_info['name']}</td>
+                            <td class="px-4 py-3 text-sm text-gray-600">{cve_info['description']}</td>
+                            <td class="px-4 py-3 text-sm text-gray-600">{cve_info['dueDate']}</td>
+                        </tr>
+            """
+        html_content += """
+                    </tbody>
+                </table>
+            </div>
+        """
+
+    # Close HTML content
+    html_content += """
         </section>
 
         <!-- Footer -->
