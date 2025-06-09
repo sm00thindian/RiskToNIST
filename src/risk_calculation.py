@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
+from src.data_processing import parse_kev_attack_mapping, parse_attack_mapping
 
 def calculate_control_risks(kev_data):
     cve_to_techniques = parse_kev_attack_mapping('data/kev_attack_mapping.json')
@@ -18,7 +19,7 @@ def calculate_control_risks(kev_data):
             'description': item['shortDescription'],
             'dueDate': item['dueDate']
         }
-        # Base risk score of 1, boosted to 1.5 if dueDate is within 30 days
+        # Base risk score of 1.0, boosted to 1.5 if dueDate is within 30 days
         risk_score = 1.0
         if item['dueDate'] != 'N/A':
             try:
