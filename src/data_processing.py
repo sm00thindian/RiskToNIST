@@ -70,7 +70,8 @@ def parse_attack_mapping(file_path):
                 technique = obj.get('attack_object_id')
                 control = obj.get('capability_id')
                 if technique and control and isinstance(control, str):
-                    technique_to_controls[technique].append(control)
+                    # Normalize control ID to lowercase to match NIST catalog
+                    technique_to_controls[technique].append(control.lower())
         
         if not technique_to_controls:
             raise ValueError("No valid technique-to-control mappings found in ATT&CK JSON")
