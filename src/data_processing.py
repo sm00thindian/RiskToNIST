@@ -59,21 +59,23 @@ def parse_attack_mapping(file_path):
         with open(file_path, 'r') as f:
             data = json.load(f)
         
-        # Validate structure: expect dict mapping techniques to lists of controls
-        if not isinstance(data, dict):
-            raise ValueError("Invalid ATT&CK mapping JSON: expected a dictionary")
+        # Validate structure: expect dict with mapping_objects
+        if not isinstance(data, dict) or 'mapping_objects' not in data:
+            raise ValueError("Invalid ATT&CK mapping JSON: expected a dictionary with 'mapping_objects'")
         
-        for technique, controls in data.items():
-            if not isinstance(controls, list):
-                raise ValueError(f"Invalid ATT&CK mapping JSON: controls for technique {technique} must be a list")
-            for control in controls:
-                if not isinstance(control, str):
-                    raise ValueError(f"Invalid ATT&CK mapping JSON: control {control} for technique {technique} must be a string")
+        # Build technique to controls mapping
+        technique_to_controls = defaultdict(list)
+        for obj in data['mapping_objects']:
+            if obj.get('mapping_type') == 'mitigates':
+                technique = obj.get('attack_object_id')
+                control = obj.get('capability_id')
+                if technique and control and isinstance(control, str):
+                    technique_to_controls[technique].append(control)
         
-        if not data:
+        if not technique_to_controls:
             raise ValueError("No valid technique-to-control mappings found in ATT&CK JSON")
         
-        return data
+        return dict(technique_to_controls)
     
     except json.JSONDecodeError as e:
         print(f"Invalid JSON in ATT&CK mapping file: {e}")
