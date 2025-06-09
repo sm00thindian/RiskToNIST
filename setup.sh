@@ -44,15 +44,17 @@ DATA_FILES=("cisa_kev.json" "cisa_kev_schema.json" "attack_mapping.json" "kev_at
 for FILE in "${DATA_FILES[@]}"; do
     if [ ! -f "data/$FILE" ]; then
         echo "Warning: $FILE not found in data/. Attempting to download..."
-        python -c "from src.data_ingestion import download_data; import json; with open('config.json', 'r') as f: config = json.load(f); download_data(config['sources'])" 2>&1 | tee download.log
+        python -c "from src.data_ingestion import download_data; import json; with open('config.json', 'r') as f: config = json.load(f); download_data([s for s in config['sources'] if s['output'] == '$FILE'])" 2>&1 | tee -a download.log
         if [ ! -f "data/$FILE" ]; then
-            echo "Error: Failed to download $FILE. Check download.log for details and ensure URLs in config.json are valid."
+            echo "Error: Failed to download $FILE. Check download.log for details."
+            echo "If $FILE is attack_mapping.json, ensure its URL in config.json is valid or provide a local file."
+            echo "Example: cp /path/to/attack_mapping.json data/attack_mapping.json"
             exit 1
         fi
     fi
 done
 
 echo "Running Risktonist..."
-python run.py
+python run.py 2>&1 | tee run.log
 
-echo "Execution completed."
+echo "Execution completed. Check run.log for details."
