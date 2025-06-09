@@ -2,6 +2,11 @@ import json
 from jsonschema import validate, ValidationError
 from datetime import datetime
 from collections import defaultdict
+import logging
+import re
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def parse_cisa_kev(file_path, schema_path):
     try:
@@ -70,8 +75,9 @@ def parse_attack_mapping(file_path):
                 technique = obj.get('attack_object_id')
                 control = obj.get('capability_id')
                 if technique and control and isinstance(control, str):
-                    # Normalize control ID to lowercase to match NIST catalog
-                    technique_to_controls[technique].append(control.lower())
+                    # Normalize control ID: lowercase and strip leading zero (e.g., CA-07 -> ca-7)
+                    normalized_control = re.sub(r'^([a-zA-Z]+)-0*(\d+)$', r'\1-\2', control.lower())
+                    technique_to_controls[technique].append(normalized_control)
         
         if not technique_to_controls:
             raise ValueError("No valid technique-to-control mappings found in ATT&CK JSON")
@@ -106,10 +112,12 @@ def parse_nist_catalog(file_path):
                             'title': control.get('title', 'N/A'),
                             'family': group_title
                         }
+                        logger.debug(f"Parsed NIST control: {control_id}")
         
         if not controls_dict:
             raise ValueError("No controls found in NIST SP 800-53 JSON")
         
+        logger.info(f"Parsed {len(controls_dict)} NIST controls")
         return controls_dict
     
     except json.JSONDecodeError as e:
