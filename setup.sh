@@ -37,7 +37,7 @@ echo "Upgrading pip..."
 pip install --upgrade pip
 
 echo "Installing dependencies..."
-pip install -r requirements.txt
+pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
 
 echo "Checking data files..."
 DATA_FILES=("cisa_kev.json" "cisa_kev_schema.json" "attack_mapping.json" "kev_attack_mapping.json" "nist_sp800_53_catalog.json")
