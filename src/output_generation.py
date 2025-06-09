@@ -1,147 +1,110 @@
+from datetime import datetime
 import json
-import pandas as pd
-import plotly.express as px
-import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def generate_json(control_to_risk, nist_controls, cve_details, output_file):
-    if not control_to_risk:
-        logger.warning("No controls mapped to CVEs. JSON output will be empty.")
-    data = []
-    for control, info in control_to_risk.items():
-        cve_list = [
-            {
-                'cveID': cve,
-                'vulnerabilityName': cve_details[cve]['name'],
-                'shortDescription': cve_details[cve]['description'],
-                'dueDate': cve_details[cve]['dueDate']
-            } for cve in info['cves']
-        ]
-        data.append({
-            'control_id': control,
-            'family': nist_controls[control]['family'],
-            'description': nist_controls[control]['title'],
-            'total_risk': info['total_risk'],
-            'cves': cve_list
-        })
-    data.sort(key=lambda x: x['total_risk'], reverse=True)
-    with open(output_file, 'w') as f:
-        json.dump(data, f, indent=2)
-
-def generate_csv(control_to_risk, nist_controls, cve_details, output_file):
-    if not control_to_risk:
-        logger.warning("No controls mapped to CVEs. CSV output will be empty.")
-        pd.DataFrame().to_csv(output_file, index=False)
-        return
-    
-    records = []
-    for control, info in control_to_risk.items():
-        if 'total_risk' not in info or 'cves' not in info:
-            logger.error(f"Invalid control_to_risk entry for {control}: {info}")
-            continue
-        for cve in info['cves']:
-            records.append({
-                'control_id': control,
-                'family': nist_controls[control]['family'],
-                'control_description': nist_controls[control]['title'],
-                'total_risk': info['total_risk'],
-                'cveID': cve,
-                'vulnerabilityName': cve_details[cve]['name'],
-                'shortDescription': cve_details[cve]['description'],
-                'dueDate': cve_details[cve]['dueDate']
-            })
-    
-    if not records:
-        logger.warning("No valid records generated for CSV output.")
-        pd.DataFrame().to_csv(output_file, index=False)
-        return
-    
-    df = pd.DataFrame(records)
-    try:
-        df = df.sort_values(by="total_risk", ascending=False)
-        df.to_csv(output_file, index=False)
-    except KeyError as e:
-        logger.error(f"Failed to sort CSV DataFrame: {e}")
-        df.to_csv(output_file, index=False)
 
 def generate_html(control_to_risk, nist_controls, cve_details, total_cves, output_file):
-    if not control_to_risk:
-        logger.warning("No controls mapped to CVEs. HTML output will be minimal.")
-    
-    data = []
-    for control, info in control_to_risk.items():
-        if 'total_risk' not in info or 'cves' not in info:
-            logger.error(f"Invalid control_to_risk entry for {control}: {info}")
-            continue
-        data.append({
-            'control_id': control,
-            'family': nist_controls[control]['family'],
-            'description': nist_controls[control]['title'],
-            'total_risk': info['total_risk']
-        })
-    control_df = pd.DataFrame(data)
-    if not control_df.empty:
-        control_df = control_df.sort_values(by="total_risk", ascending=False)
-    
-    cve_data = []
-    for control, info in control_to_risk.items():
-        if 'cves' not in info:
-            continue
-        for cve in info['cves']:
-            cve_data.append({
-                'control_id': control,
-                'cveID': cve,
-                'vulnerabilityName': cve_details[cve]['name'],
-                'shortDescription': cve_details[cve]['description'],
-                'dueDate': cve_details[cve]['dueDate']
-            })
-    cve_df = pd.DataFrame(cve_data)
-    
-    # Bar chart for top 10 controls
-    bar_fig = px.bar(control_df.head(10), x="control_id", y="total_risk", title="Top 10 Controls by Risk Mitigated",
-                     labels={"total_risk": "Risk Score", "control_id": "Control ID"}) if not control_df.empty else None
-    
-    # Family pie chart
-    family_risk = control_df.groupby("family")["total_risk"].sum().reset_index() if not control_df.empty else pd.DataFrame()
-    pie_fig = px.pie(family_risk, values="total_risk", names="family", title="Risk Mitigated by Control Family") if not family_risk.empty else None
-    
-    # Summary statistics
-    total_mitigated = sum(info['total_risk'] for info in control_to_risk.values()) if control_to_risk else 0
-    
-    # Write HTML with escaped CSS braces
+    # Sort controls by total_risk in descending order
+    sorted_controls = sorted(
+        control_to_risk.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
+
+    # Start HTML content
+    html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risktonist Cybersecurity Risk Assessment Report</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-6 max-w-7xl">
+        <!-- Header -->
+        <header class="bg-blue-600 text-white p-6 rounded-lg shadow-md mb-6">
+            <h1 class="text-3xl font-bold">Cybersecurity Risk Assessment Report</h1>
+            <p class="mt-2">Generated by Risktonist on {generation_date}</p>
+            <p>Total CVEs Analyzed: {total_cves}</p>
+        </header>
+
+        <!-- Introduction -->
+        <section class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-2xl font-semibold text-gray-800">About This Report</h2>
+            <p class="mt-4 text-gray-600">
+                This report identifies cybersecurity risks in your systems by analyzing known vulnerabilities (CVEs) and mapping them to NIST SP 800-53 security controls. It highlights which controls are most at risk, helping you prioritize actions to strengthen your security posture. Each control is assigned a risk score based on the vulnerabilities associated with it, and controls are sorted from highest to lowest risk for clear decision-making.
+            </p>
+        </section>
+
+        <!-- Risk Calculation Explanation -->
+        <section class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-2xl font-semibold text-gray-800">How We Calculate Risk</h2>
+            <p class="mt-4 text-gray-600">
+                The risk score for each NIST control reflects the total risk from all vulnerabilities (CVEs) linked to that control. Each CVE is assigned a risk score based on its severity, exploitability, and potential impact, as defined in our data mappings. We sum these scores for all CVEs associated with a control to get the total risk. Higher scores indicate controls that need urgent attention due to significant or numerous vulnerabilities.
+            </p>
+        </section>
+
+        <!-- Controls Table -->
+        <section class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold text-gray-800">Risk-Based Control Assessment</h2>
+            <div class="overflow-x-auto mt-4">
+                <table class="min-w-full bg-white border border-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b">Control ID</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b">Family</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b">Control Description</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b">Total Risk</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b">Associated CVEs</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+    """.format(
+        generation_date=datetime.now().strftime("%B %d, %Y"),
+        total_cves=total_cves
+    )
+
+    # Add table rows for each control
+    for control_id, risk_score in sorted_controls:
+        control_info = next((c for c in nist_controls if c['id'] == control_id), {})
+        family = control_info.get('family', 'Unknown')
+        description = control_info.get('description', 'No description available')
+        
+        # Get CVEs associated with this control
+        control_cves = [
+            cve for cve in cve_details
+            if cve['control_id'] == control_id
+        ]
+        cve_list = ", ".join(cve['cveID'] for cve in control_cves) if control_cves else "None"
+
+        html_content += f"""
+                        <tr>
+                            <td class="px-4 py-3 text-sm text-gray-600">{control_id}</td>
+                            <td class="px-4 py-3 text-sm text-gray-600">{family}</td>
+                            <td class="px-4 py-3 text-sm text-gray-600">{description}</td>
+                            <td class="px-4 py-3 text-sm text-gray-600">{risk_score:.1f}</td>
+                            <td class="px-4 py-3 text-sm text-gray-600">{cve_list}</td>
+                        </tr>
+        """
+
+    # Close HTML content
+    html_content += """
+                    </tbody>
+                </table>
+            </div>
+            <p class="mt-4 text-gray-600 text-sm">
+                Note: Controls are sorted by total risk, with the highest-risk controls listed first. Review these controls and their associated vulnerabilities to prioritize remediation efforts.
+            </p>
+        </section>
+
+        <!-- Footer -->
+        <footer class="mt-6 text-center text-gray-500 text-sm">
+            <p>Generated by Risktonist | &copy; {year} All rights reserved.</p>
+        </footer>
+    </div>
+</body>
+</html>
+    """.format(year=datetime.now().year)
+
+    # Write to output file
     with open(output_file, 'w') as f:
-        f.write("""
-        <html>
-        <head>
-            <title>Risktonist Report</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
-                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                th {{ background-color: #f2f2f2; }}
-                h2 {{ margin-top: 30px; }}
-            </style>
-        </head>
-        <body>
-            <h1>Risktonist Report</h1>
-            <h2>Summary</h2>
-            <p>Total number of KEVs: {}</p>
-            <p>Total risk mitigated by recommended controls: {:.2f}</p>
-            <p>Number of controls mitigating at least one KEV: {}</p>
-            <h2>Prioritized Controls</h2>
-            {}
-            <h2>Top 10 Controls by Risk Mitigated</h2>
-            {}
-            <h2>Risk Mitigated by Control Family</h2>
-            {}
-            <h2>Associated Vulnerabilities</h2>
-            {}
-        </body>
-        </html>
-        """.format(total_cves, total_mitigated, len(control_to_risk),
-                   control_df.to_html(index=False) if not control_df.empty else "<p>No controls mapped.</p>",
-                   bar_fig.to_html(full_html=False) if bar_fig else "<p>No data for chart.</p>",
-                   pie_fig.to_html(full_html=False) if pie_fig else "<p>No data for chart.</p>",
-                   cve_df.to_html(index=False) if not cve_df.empty else "<p>No vulnerabilities mapped.</p>"))
+        f.write(html_content)
