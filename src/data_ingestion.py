@@ -7,7 +7,11 @@ def download_data(sources):
         if source['enabled']:
             url = source['url']
             output = os.path.join('data', source['output'])
-            response = requests.get(url)
-            response.raise_for_status()
-            with open(output, 'wb') as f:
-                f.write(response.content)
+            try:
+                response = requests.get(url)
+                response.raise_for_status()
+                with open(output, 'wb') as f:
+                    f.write(response.content)
+            except requests.RequestException as e:
+                print(f"Failed to download {source['name']}: {e}")
+                raise
