@@ -47,8 +47,9 @@ for FILE in "${DATA_FILES[@]}"; do
         python -c "from src.data_ingestion import download_data; import json; with open('config.json', 'r') as f: config = json.load(f); download_data([s for s in config['sources'] if s['output'] == '$FILE'])" 2>&1 | tee -a download.log
         if [ ! -f "data/$FILE" ]; then
             echo "Error: Failed to download $FILE. Check download.log for details."
-            echo "If $FILE is attack_mapping.json, ensure its URL in config.json is valid or provide a local file."
-            echo "Example: cp /path/to/attack_mapping.json data/attack_mapping.json"
+            echo "For attack_mapping.json or kev_attack_mapping.json, consider using local files:"
+            echo "  cp /path/to/$FILE data/$FILE"
+            echo "Update config.json with: \"url\": \"file:///path/to/$FILE\""
             exit 1
         fi
     fi
