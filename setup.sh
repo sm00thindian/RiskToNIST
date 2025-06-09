@@ -9,7 +9,7 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 echo "Checking OpenSSL version..."
-PYTHON_OPENSSL_VERSION=$(python3 -c "import ssl; print(ssl.OPENSSL_VERSION)")
+PYTHON_OPENSSL_VERSION=$(python3 -c "import ssl; print(ssl.OPENSSL_VERSION)" 2>/dev/null || echo "Unknown")
 echo "Python is using: $PYTHON_OPENSSL_VERSION"
 if [[ "$PYTHON_OPENSSL_VERSION" =~ "OpenSSL 1.0" ]]; then
     echo "Detected OpenSSL 1.0.x, ensuring urllib3<2.0 is used."
@@ -30,6 +30,18 @@ pip install --upgrade pip
 
 echo "Installing dependencies..."
 pip install -r requirements.txt
+
+echo "Checking data files..."
+DATA_FILES=("cisa_kev.json" "cisa_kev_schema.json" "attack_mapping.json" "kev_attack_mapping.json" "nist_sp800_53_catalog.json")
+for FILE in "${DATA_FILES[@]}"; do
+    if [ ! -f "data/$FILE" ]; then
+        echo "Warning: $FILE not found in data/. Attempting to download..."
+        python run.py --download-only 2>/dev/null || {
+            echo "Error: Failed to download $FILE. Ensure URLs in config.json are valid."
+            exit 1
+        }
+    fi
+done
 
 echo "Running Risktonist..."
 python run.py
