@@ -1,10 +1,28 @@
 import json
+from jsonschema import validate, ValidationError
+from datetime import datetime
 
-def parse_cisa_kev(file_path):
-    with open(file_path, 'r') as f:
-        data = json.load(f)
-        # Expected: {"vulnerabilities": [{"cveID": "CVE-2023-1234", ...}, ...]}
-        return [item['cveID'] for item in data['vulnerabilities']]
+def parse_cisa_kev(file_path, schema_path):
+    try:
+        with open(schema_path, 'r') as f:
+            schema = json.load(f)
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        validate(instance=data, schema=schema)
+    except ValidationError as e:
+        print(f"CISA KEV JSON validation failed: {e}")
+        raise
+    except json.JSONDecodeError as e:
+        print(f"Invalid JSON in CISA KEV file: {e}")
+        raise
+    
+    # Extract cveID, vulnerabilityName, shortDescription, dueDate
+    return [{
+        'cveID': item['cveID'],
+        'vulnerabilityName': item.get('vulnerabilityName', 'N/A'),
+        'shortDescription': item.get('shortDescription', 'N/A'),
+        'dueDate': item.get('dueDate', 'N/A')
+    } for item in data['vulnerabilities']]
 
 def parse_kev_attack_mapping(file_path):
     with open(file_path, 'r') as f:
