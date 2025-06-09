@@ -1,10 +1,10 @@
-import csv
 import json
 
 def parse_cisa_kev(file_path):
     with open(file_path, 'r') as f:
-        reader = csv.DictReader(f)
-        return [row['cveID'] for row in reader]
+        data = json.load(f)
+        # Expected: {"vulnerabilities": [{"cveID": "CVE-2023-1234", ...}, ...]}
+        return [item['cveID'] for item in data['vulnerabilities']]
 
 def parse_kev_attack_mapping(file_path):
     with open(file_path, 'r') as f:
@@ -21,9 +21,5 @@ def parse_attack_mapping(file_path):
 def parse_nist_catalog(file_path):
     with open(file_path, 'r') as f:
         data = json.load(f)
-        # Expected: {"controls": [{"id": "AC-1", "title": "..."}, ...]}
-        return {control['id']: control['title'] for control in data['controls']}
-
-def load_satisfied_controls(file_path):
-    with open(file_path, 'r') as f:
-        return [line.strip() for line in f if line.strip()]
+        # Expected: {"catalog": {"controls": [{"id": "AC-1", "title": "...", "family": "Access Control"}, ...]}}
+        return {control['id']: {"title": control['title'], "family": control.get('family', 'Unknown')} for control in data['catalog']['controls']}
