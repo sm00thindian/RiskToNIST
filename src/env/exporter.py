@@ -68,6 +68,11 @@ def export_to_html(data, file_path):
             .nested-table { width: 100%; border-collapse: collapse; }
             .nested-table td { border: none; padding: 4px; vertical-align: top; }
             p { line-height: 1.6; }
+            .comment { cursor: pointer; color: #0066cc; }
+            .comment:hover { text-decoration: underline; }
+            .tooltip { display: none; position: absolute; background: #f9f9f9; border: 1px solid #ddd; padding: 5px; max-width: 300px; }
+            .comment:hover .tooltip { display: block; }
+            footer { margin-top: 20px; font-size: 0.9em; color: #666; }
         </style>
     </head>
     <body>
@@ -109,7 +114,8 @@ def export_to_html(data, file_path):
             This table provides detailed information for each NIST 800-53 control, including its family, risk level, and associated MITRE ATT&CK techniques with AWS mitigations. 
             Controls are sorted by risk level (highest first) to prioritize critical vulnerabilities. 
             Techniques with "No AWS mitigations defined" indicate no specific AWS service mappings in the input data, suggesting potential increased risk due to unmitigated vulnerabilities. 
-            Assess these techniques further based on your environment’s exposure and the technique’s severity.
+            Assess these techniques further based on your environment’s exposure and the technique’s severity. 
+            Click on mitigation comments for additional details.
         </p>
         <table>
             <tr>
@@ -129,12 +135,29 @@ def export_to_html(data, file_path):
                     <table class="nested-table">
                         {% for tech in control.associated_techniques %}
                         <tr>
-                            <td>{{ tech.technique_id }}</td>
+                            <td>{{ tech.technique_id }}: {{ tech.technique_name | default('Unknown Technique') }}</td>
                             <td>
                                 {% if tech.mitigations %}
                                 <ul>
                                     {% for mitigation in tech.mitigations %}
-                                    <li>{{ mitigation.aws_service }} ({{ mitigation.score_category }}, {{ mitigation.score_value }})</li>
+                                    <li>
+                                        {{ mitigation.aws_service }} ({{ mitigation.score_category }}, {{ mitigation.score_value }})
+                                        {% if mitigation.comment %}
+                                        <span class="comment" title="{{ mitigation.comment | e }}">{{ mitigation.comment[:100] | e }}{% if mitigation.comment|length > 100 %}...{% endif %}
+                                            <span class="tooltip">{{ mitigation.comment | e }}</span>
+                                        </span>
+                                        {% endif %}
+                                        {% if mitigation.references %}
+                                        <br>References:
+                                        <ul>
+                                            {% for ref in mitigation.references %}
+                                            <li><a href="{{ ref | e }}" target="_blank">{{ ref | truncate(50) | e }}</a></li>
+                                            {% endfor %}
+                                        </ul>
+                                        {% else %}
+                                        <br>No references provided
+                                        {% endif %}
+                                    </li>
                                     {% endfor %}
                                 </ul>
                                 {% else %}
@@ -148,9 +171,43 @@ def export_to_html(data, file_path):
             </tr>
             {% endfor %}
         </table>
+        <footer>
+            Generated using AWS Mapping v12/12/2024 and MITRE ATT&CK v16.1
+        </footer>
     </body>
     </html>
     """)
-    html_content = template.render(sorted_data=sorted_data, FAMILY_MAPPING=FAMILY_MAPPING)
+    # Enhance data with technique names, comments, and references
+    enhanced_data = []
+    with open('src/env/aws-12.12.2024_attack-16.1-enterprise.json', 'r') as f:
+        aws_data = json.load(f)
+    technique_map = {m['attack_object_id']: m for m in aws_data['mapping_objects'] if m.get('attack_object_id')}
+    
+    for control in sorted_data:
+        enhanced_control = control.copy()
+        enhanced_techniques = []
+        for tech in control['associated_techniques']:
+            enhanced_tech = tech.copy()
+            technique_info = technique_map.get(tech['technique_id'], {})
+            enhanced_tech['technique_name'] = technique_info.get('attack_object_name')
+            enhanced_mitigations = []
+            for mitigation in tech['mitigations']:
+                enhanced_mitigation = mitigation.copy()
+                # Find matching mapping for comments and references
+                for mapping in aws_data['mapping_objects']:
+                    if (mapping.get('attack_object_id') == tech['technique_id'] and 
+                        mapping.get('capability_description') == mitigation['aws_service'] and
+                        mapping.get('score_category') == mitigation['score_category'] and
+                        mapping.get('score_value').lower() == mitigation['score_value'].lower()):
+                        enhanced_mitigation['comment'] = mapping.get('comments', '')
+                        enhanced_mitigation['references'] = mapping.get('references', [])
+                        break
+                enhanced_mitigations.append(enhanced_mitigation)
+            enhanced_tech['mitigations'] = enhanced_mitigations
+            enhanced_techniques.append(enhanced_tech)
+        enhanced_control['associated_techniques'] = enhanced_techniques
+        enhanced_data.append(enhanced_control)
+
+    html_content = template.render(sorted_data=enhanced_data, FAMILY_MAPPING=FAMILY_MAPPING)
     with open(file_path, 'w') as f:
         f.write(html_content)
