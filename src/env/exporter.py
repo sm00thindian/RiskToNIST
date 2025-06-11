@@ -2,6 +2,7 @@
 """Module to export prioritized NIST controls to CSV, JSON, and HTML formats."""
 import csv
 import json
+import os
 from jinja2 import Template
 
 # Mapping of NIST 800-53 family acronyms to full names
@@ -43,52 +44,57 @@ def export_to_json(data, file_path):
     with open(file_path, 'w') as f:
         json.dump(data, f, indent=4)
 
-def export_to_html(data, file_path):
-    """Export prioritized controls to a styled HTML file with detailed sections.
+def export_to_html(data, output_dir):
+    """Export prioritized controls to two HTML files: summary and details.
 
     Args:
         data (list): List of control dictionaries.
-        file_path (str): Path to save the HTML file.
+        output_dir (str): Directory to save the HTML files.
     """
     # Sort data by risk_level (descending), mitigation_coverage (descending), technique_count (descending), then control ID
     sorted_data = sorted(data, key=lambda x: (-x['risk_level'], -x['mitigation_coverage'], -x['technique_count'], x['id']))
 
-    template = Template("""
+    # Common CSS and header
+    common_style = """
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1, h2, h3 { color: #333; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
+        th { background-color: #f2f2f2; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .nested-table { width: 100%; border-collapse: collapse; }
+        .nested-table td { border: none; padding: 4px; vertical-align: top; }
+        p { line-height: 1.6; }
+        .comment { cursor: pointer; color: #0066cc; }
+        .comment:hover { text-decoration: underline; }
+        .tooltip { display: none; position: absolute; background: #f9f9f9; border: 1px solid #ddd; padding: 5px; max-width: 300px; }
+        .comment:hover .tooltip { display: block; }
+        footer { margin-top: 20px; font-size: 0.9em; color: #666; }
+    """
+
+    # Summary page template
+    summary_template = Template("""
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Prioritized NIST 800-53 Controls for AWS Workloads</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1, h2, h3 { color: #333; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
-            th { background-color: #f2f2f2; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
-            .nested-table { width: 100%; border-collapse: collapse; }
-            .nested-table td { border: none; padding: 4px; vertical-align: top; }
-            p { line-height: 1.6; }
-            .comment { cursor: pointer; color: #0066cc; }
-            .comment:hover { text-decoration: underline; }
-            .tooltip { display: none; position: absolute; background: #f9f9f9; border: 1px solid #ddd; padding: 5px; max-width: 300px; }
-            .comment:hover .tooltip { display: block; }
-            footer { margin-top: 20px; font-size: 0.9em; color: #666; }
-        </style>
+        <title>Prioritized NIST 800-53 Controls for AWS Workloads - Summary</title>
+        <style>{{ style }}</style>
     </head>
     <body>
-        <h1>Prioritized NIST 800-53 Controls for AWS Workloads</h1>
+        <h1>Prioritized NIST 800-53 Controls for AWS Workloads - Summary</h1>
         <p>
             This report prioritizes NIST 800-53 controls for AWS workloads based on risk levels derived from associated MITRE ATT&CK techniques and their mitigations in AWS services. 
             <strong>Risk Level</strong> (0–3) indicates the criticality of implementing each control, where:
             <ul>
-                <li><strong>0</strong>: No mitigation for at least one associated technique, indicating potential high risk.</li>
+                <li><strong>0</strong>: No mitigation for at least one associated technique, indicating high risk.</li>
                 <li><strong>1</strong>: Minimal mitigation, moderate risk requiring attention.</li>
                 <li><strong>2</strong>: Partial mitigation, high risk with significant exposure.</li>
                 <li><strong>3</strong>: Significant mitigation, critical risk mitigated effectively by AWS services.</li>
             </ul>
             Risk levels are determined by the minimum mitigation level of associated ATT&CK techniques, weighted by the effectiveness of AWS services (significant, partial, minimal, or none). 
-            Within the same risk level, controls are prioritized by mitigation coverage (proportion of mitigated techniques) and number of associated techniques.
+            Within the same risk level, controls are prioritized by mitigation coverage (proportion of mitigated techniques) and number of affected techniques. 
+            Click "Details" to view detailed mitigation information on the <a href="aws_controls_details.html">Details page</a>.
         </p>
 
         <h2>Control Summary</h2>
@@ -101,22 +107,38 @@ def export_to_html(data, file_path):
                 <th>Mitigation Coverage</th>
                 <th>Details</th>
             </tr>
-            {% for control in sorted_data %}
+            {% for control in data %}
             <tr>
                 <td>{{ control.id }}</td>
                 <td>{{ control.name }}</td>
                 <td>{{ FAMILY_MAPPING.get(control.family, control.family) }}</td>
                 <td>{{ control.risk_level }}</td>
                 <td>{{ (control.mitigation_coverage*100)|round(1) }}% ({{ control.associated_techniques|selectattr('mitigations')|list|length }}/{{ control.technique_count }})</td>
-                <td><a href="#{{ control.id }}">View Details</a></td>
+                <td><a href="aws_controls_details.html#{{ control.id }}">View Details</a></td>
             </tr>
             {% endfor %}
         </table>
+        <footer>
+            Generated using AWS Mapping v12/12/2024 and MITRE ATT&CK v16.1
+        </footer>
+    </body>
+    </html>
+    """)
 
-        <h2>Detailed Control Information</h2>
+    # Details page template
+    details_template = Template("""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Prioritized NIST 800-53 Controls for AWS Workloads - Details</title>
+        <style>{{ style }}</style>
+    </head>
+    <body>
+        <h1>Prioritized NIST 800-53 Controls for AWS Workloads - Details</h1>
         <p>
-            This table provides detailed information for each NIST 800-53 control, including its family, risk level, mitigation coverage, and associated MITRE ATT&CK techniques with AWS mitigations. 
-            Controls are sorted by risk level (highest first), then by mitigation coverage and technique count. 
+            This page provides detailed information for each NIST 800-53 control, including its family, risk level, mitigation coverage, and associated MITRE ATT&CK techniques with AWS mitigations. 
+            Controls are sorted by risk level (highest first), then by mitigation coverage and technique count, as in the <a href="aws_controls_summary.html">Summary page</a>. 
             Techniques with "No AWS mitigations defined" indicate no specific AWS service mappings in the input data, suggesting potential increased risk due to unmitigated vulnerabilities. 
             Assess these techniques further based on your environment’s exposure and the technique’s severity. 
             Click on mitigation comments for additional details.
@@ -130,7 +152,7 @@ def export_to_html(data, file_path):
                 <th>Mitigation Coverage</th>
                 <th>Associated ATT&CK Techniques</th>
             </tr>
-            {% for control in sorted_data %}
+            {% for control in data %}
             <tr id="{{ control.id }}">
                 <td>{{ control.id }}</td>
                 <td>{{ control.name }}</td>
@@ -183,6 +205,7 @@ def export_to_html(data, file_path):
     </body>
     </html>
     """)
+
     # Enhance data with technique names, comments, and references
     enhanced_data = []
     with open('src/env/aws-12.12.2024_attack-16.1-enterprise.json', 'r') as f:
@@ -199,7 +222,6 @@ def export_to_html(data, file_path):
             enhanced_mitigations = []
             for mitigation in tech['mitigations']:
                 enhanced_mitigation = mitigation.copy()
-                # Find matching mapping for comments and references
                 for mapping in aws_data['mapping_objects']:
                     if (mapping.get('attack_object_id') == tech['technique_id'] and 
                         mapping.get('capability_description') == mitigation['aws_service'] and
@@ -214,6 +236,12 @@ def export_to_html(data, file_path):
         enhanced_control['associated_techniques'] = enhanced_techniques
         enhanced_data.append(enhanced_control)
 
-    html_content = template.render(sorted_data=enhanced_data, FAMILY_MAPPING=FAMILY_MAPPING)
-    with open(file_path, 'w') as f:
-        f.write(html_content)
+    # Generate summary page
+    summary_content = summary_template.render(data=enhanced_data, FAMILY_MAPPING=FAMILY_MAPPING, style=common_style)
+    with open(os.path.join(output_dir, 'aws_controls_summary.html'), 'w') as f:
+        f.write(summary_content)
+
+    # Generate details page
+    details_content = details_template.render(data=enhanced_data, FAMILY_MAPPING=FAMILY_MAPPING, style=common_style)
+    with open(os.path.join(output_dir, 'aws_controls_details.html'), 'w') as f:
+        f.write(details_content)
