@@ -52,6 +52,7 @@ EOF
 run_main() {
     echo "Executing main script..."
     python3 run.py
+    python3 src/env/main.py
 }
 
 # Main execution
