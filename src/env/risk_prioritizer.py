@@ -10,6 +10,7 @@ def prioritize_controls(aws_data, attack_to_nist):
     - 1: Minimal
     - 2: Partial
     - 3: Significant
+    Adds mitigation coverage (proportion of mitigated techniques) and technique count for prioritization.
 
     Args:
         aws_data (dict): AWS mapping data with 'mapping_objects'.
@@ -42,15 +43,22 @@ def prioritize_controls(aws_data, attack_to_nist):
             if control_id not in nist_controls:
                 nist_controls[control_id] = control
 
-    # Calculate risk levels
+    # Calculate risk levels and mitigation coverage
     control_risk_levels = {}
+    control_mitigation_coverage = {}
+    control_technique_counts = {}
     for control_id, techniques in control_to_techniques.items():
         min_mitigation = min(technique_mitigation_level.get(tech, 0) for tech in techniques)
         control_risk_levels[control_id] = min_mitigation
+        # Count mitigated techniques (non-zero mitigation level)
+        mitigated_count = sum(1 for tech in techniques if technique_mitigation_level.get(tech, 0) > 0)
+        total_count = len(techniques)
+        control_mitigation_coverage[control_id] = mitigated_count / total_count if total_count > 0 else 0
+        control_technique_counts[control_id] = total_count
 
     # Build prioritized list
     prioritized_controls = []
-    for control_id in sorted(control_risk_levels, key=control_risk_levels.get):
+    for control_id in sorted(control_risk_levels.keys()):
         control = nist_controls[control_id]
         associated_techniques = []
         for tech in control_to_techniques[control_id]:
@@ -62,12 +70,17 @@ def prioritize_controls(aws_data, attack_to_nist):
                 }
                 for m in aws_data['mapping_objects'] if m.get('attack_object_id') == tech
             ]
-            associated_techniques.append({'technique_id': tech, 'mitigations': mitigations})
+            associated_techniques.append({
+                'technique_id': tech,
+                'mitigations': mitigations
+            })
         prioritized_controls.append({
             'id': control['id'],
             'name': control['name'],
             'family': control['family'],
             'risk_level': control_risk_levels[control_id],
+            'mitigation_coverage': control_mitigation_coverage[control_id],
+            'technique_count': control_technique_counts[control_id],
             'associated_techniques': associated_techniques
         })
     return prioritized_controls
