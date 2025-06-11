@@ -102,8 +102,7 @@ def export_to_html(data, output_dir):
             </ul>
             Risk levels are determined by the minimum mitigation level of associated ATT&CK techniques, weighted by the effectiveness of AWS services (significant, partial, minimal, or none). 
             Within the same risk level, controls are prioritized by mitigation coverage (proportion of mitigated techniques) and number of associated techniques. 
-            Click "Details" to view detailed mitigation information for each control. 
-            All HTML reports are also available as a single ZIP file: <a href="aws_controls.zip">aws_controls.zip</a>.
+            Click "Details" to view detailed mitigation information for each control.</a>.
         </p>
 
         <h2>Control Summary</h2>
