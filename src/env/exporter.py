@@ -62,11 +62,11 @@ def export_to_html(data, file_path):
             body { font-family: Arial, sans-serif; margin: 20px; }
             h1, h2, h3 { color: #333; }
             table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
             th { background-color: #f2f2f2; }
             tr:nth-child(even) { background-color: #f9f9f9; }
             .nested-table { width: 100%; border-collapse: collapse; }
-            .nested-table td { border: none; padding: 4px; }
+            .nested-table td { border: none; padding: 4px; vertical-align: top; }
             p { line-height: 1.6; }
         </style>
     </head>
@@ -76,10 +76,10 @@ def export_to_html(data, file_path):
             This report prioritizes NIST 800-53 controls for AWS workloads based on risk levels derived from associated MITRE ATT&CK techniques and their mitigations in AWS services. 
             <strong>Risk Level</strong> (0–3) indicates the criticality of implementing each control, where:
             <ul>
-                <li><strong>0</strong>: No mitigation or low risk, minimal impact.</li>
+                <li><strong>0</strong>: No mitigation for at least one associated technique, indicating potential high risk.</li>
                 <li><strong>1</strong>: Minimal mitigation, moderate risk requiring attention.</li>
                 <li><strong>2</strong>: Partial mitigation, high risk with significant exposure.</li>
-                <li><strong>3</strong>: Significant mitigation, critical risk requiring urgent implementation.</li>
+                <li><strong>3</strong>: Significant mitigation, critical risk mitigated effectively by AWS services.</li>
             </ul>
             Risk levels are determined by the minimum mitigation level of associated ATT&CK techniques, weighted by the effectiveness of AWS services (significant, partial, minimal, or none).
         </p>
@@ -108,7 +108,8 @@ def export_to_html(data, file_path):
         <p>
             This table provides detailed information for each NIST 800-53 control, including its family, risk level, and associated MITRE ATT&CK techniques with AWS mitigations. 
             Controls are sorted by risk level (highest first) to prioritize critical vulnerabilities. 
-            Some ATT&CK techniques may lack mitigation details if no AWS-specific mitigations are defined in the input data, indicating they are unmapped or not mitigated by AWS services.
+            Techniques with "No AWS mitigations defined" indicate no specific AWS service mappings in the input data, suggesting potential increased risk due to unmitigated vulnerabilities. 
+            Assess these techniques further based on your environment’s exposure and the technique’s severity.
         </p>
         <table>
             <tr>
