@@ -1,4 +1,4 @@
-# main.py
+# src/env/main.py
 """Main module to orchestrate the NIST 800-53 control prioritization workflow.
 
 This script loads AWS and ATT&CK-to-NIST mapping data, identifies gaps, prioritizes
@@ -13,10 +13,13 @@ from exporter import export_to_csv, export_to_json, export_to_html
 
 def main():
     """Main function to run the NIST control prioritization project."""
-    # Get the project root directory (assuming main.py is in the root)
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    aws_file = os.path.join(project_root, 'src', 'env', 'aws-12.12.2024_attack-16.1-enterprise.json')
-    mapping_file = os.path.join(project_root, 'src', 'env', 'attack_mapping.json')
+    # Get the directory of the current script (src/env/)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Construct paths relative to src/env/
+    aws_file = os.path.join(script_dir, 'aws-12.12.2024_attack-16.1-enterprise.json')
+    mapping_file = os.path.join(script_dir, 'attack_mapping.json')
+    # Output directory in project root
+    project_root = os.path.dirname(os.path.dirname(script_dir))
     output_dir = os.path.join(project_root, 'output')
 
     # Create output directory if it doesn't exist
