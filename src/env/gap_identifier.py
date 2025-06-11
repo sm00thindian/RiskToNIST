@@ -22,7 +22,7 @@ def identify_gaps(aws_data, attack_to_nist):
     mapped_techniques = {mapping['attack_id'] for mapping in attack_to_nist}
 
     # Load attack_mapping.json to include non_mappable techniques
-    with open('attack_mapping.json', 'r') as f:
+    with open('src/env/attack_mapping.json', 'r') as f:
         attack_mapping = json.load(f)
     non_mappable_techniques = {mapping['attack_object_id'] for mapping in attack_mapping['mapping_objects'] 
                                if mapping['mapping_type'] == 'non_mappable' and mapping.get('attack_object_id')}
