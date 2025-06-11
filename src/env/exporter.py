@@ -45,7 +45,7 @@ def export_to_json(data, file_path):
         json.dump(data, f, indent=4)
 
 def export_to_html(data, output_dir):
-    """Export prioritized controls to two HTML files: summary and details.
+    """Export prioritized controls to a summary HTML file and per-control detail HTML files.
 
     Args:
         data (list): List of control dictionaries.
@@ -94,7 +94,7 @@ def export_to_html(data, output_dir):
             </ul>
             Risk levels are determined by the minimum mitigation level of associated ATT&CK techniques, weighted by the effectiveness of AWS services (significant, partial, minimal, or none). 
             Within the same risk level, controls are prioritized by mitigation coverage (proportion of mitigated techniques) and number of associated techniques. 
-            Click "Details" to view detailed mitigation information on the <a href="aws_controls_details.html">Details page</a>.
+            Click "Details" to view detailed mitigation information for each control.
         </p>
 
         <h2>Control Summary</h2>
@@ -114,7 +114,7 @@ def export_to_html(data, output_dir):
                 <td>{{ FAMILY_MAPPING.get(control.family, control.family) }}</td>
                 <td>{{ control.risk_level }}</td>
                 <td>{{ (control.mitigation_coverage*100)|round(1) }}% ({{ control.associated_techniques|selectattr('mitigations')|list|length }}/{{ control.technique_count }})</td>
-                <td><a href="aws_controls_details.html#{{ control.id }}">View Details</a></td>
+                <td><a href="aws_controls_details_{{ control.id }}.html">View Details</a></td>
             </tr>
             {% endfor %}
         </table>
@@ -125,20 +125,20 @@ def export_to_html(data, output_dir):
     </html>
     """)
 
-    # Details page template
-    details_template = Template("""
+    # Per-control detail page template
+    detail_template = Template("""
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Prioritized NIST 800-53 Controls for AWS Workloads - Details</title>
+        <title>Prioritized NIST 800-53 Control: {{ control.id }} - {{ control.name }}</title>
         <style>{{ style }}</style>
     </head>
     <body>
-        <h1>Prioritized NIST 800-53 Controls for AWS Workloads - Details</h1>
+        <h1>Prioritized NIST 800-53 Control: {{ control.id }} - {{ control.name }}</h1>
         <p>
-            This page provides detailed information for each NIST 800-53 control, including its family, risk level, mitigation coverage, and associated MITRE ATT&CK techniques with AWS mitigations. 
-            Controls are sorted by risk level (highest first), then by mitigation coverage and technique count, as in the <a href="aws_controls_summary.html">Summary page</a>. 
+            This page provides detailed information for NIST 800-53 control {{ control.id }}, including its family, risk level, mitigation coverage, and associated MITRE ATT&CK techniques with AWS mitigations. 
+            Return to the <a href="aws_controls_summary.html">Summary page</a> to view all controls. 
             Techniques with "No AWS mitigations defined" indicate no specific AWS service mappings in the input data, suggesting higher risk due to unmitigated vulnerabilities. 
             Assess these techniques further based on your environment’s exposure and the technique’s severity. 
             Click on mitigation comments for additional details.
@@ -152,7 +152,6 @@ def export_to_html(data, output_dir):
                 <th>Mitigation Coverage</th>
                 <th>Associated ATT&CK Techniques</th>
             </tr>
-            {% for control in data %}
             <tr id="{{ control.id }}">
                 <td>{{ control.id }}</td>
                 <td>{{ control.name }}</td>
@@ -197,7 +196,6 @@ def export_to_html(data, output_dir):
                     </table>
                 </td>
             </tr>
-            {% endfor %}
         </table>
         <footer>
             Generated using AWS Mapping v12/12/2024 and MITRE ATT&CK v16.1
@@ -242,7 +240,9 @@ def export_to_html(data, output_dir):
     with open(os.path.join(output_dir, 'aws_controls_summary.html'), 'w') as f:
         f.write(summary_content)
 
-    # Generate details page
-    details_content = details_template.render(data=enhanced_data, FAMILY_MAPPING=FAMILY_MAPPING, style=common_style)
-    with open(os.path.join(output_dir, 'aws_controls_details.html'), 'w') as f:
-        f.write(details_content)
+    # Generate per-control detail pages
+    for control in enhanced_data:
+        detail_content = detail_template.render(control=control, FAMILY_MAPPING=FAMILY_MAPPING, style=common_style)
+        detail_file = os.path.join(output_dir, f"aws_controls_details_{control['id']}.html")
+        with open(detail_file, 'w') as f:
+            f.write(detail_content)
