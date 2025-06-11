@@ -41,7 +41,7 @@ def main():
     # Export results
     export_to_csv(prioritized_controls, os.path.join(output_dir, 'aws_controls.csv'))
     export_to_json(prioritized_controls, os.path.join(output_dir, 'aws_controls.json'))
-    export_to_html(prioritized_controls, os.path.join(output_dir, 'aws_controls.html'))
+    export_to_html(prioritized_controls, output_dir)  # Pass directory, not file path
 
 if __name__ == '__main__':
     main()
