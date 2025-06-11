@@ -209,7 +209,7 @@ def export_to_html(data, output_dir):
 
     # Enhance data with technique names, comments, and references
     enhanced_data = []
-    aws_data_path = os.path.join('src', 'env', 'aws-12.12.2024_attack_data-enterprise.json')
+    aws_data_path = os.path.join('src', 'env', 'aws-12.12.2024_attack-16.1-enterprise.json')
     with open(aws_data_path, 'r') as f:
         aws_data = json.load(f)
     technique_map = {m['technique_id']: m for m in aws_data['mapping_data'] if m.get('technique_id')}
