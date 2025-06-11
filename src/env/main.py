@@ -32,16 +32,16 @@ def main():
 
     # Identify gaps and save to a file
     gaps = identify_gaps(aws_data, attack_to_nist)
-    with open(os.path.join(output_dir, 'gaps.json'), 'w') as f:
+    with open(os.path.join(output_dir, 'aws_gaps.json'), 'w') as f:
         json.dump(list(gaps), f, indent=4)
 
     # Prioritize controls
     prioritized_controls = prioritize_controls(aws_data, attack_to_nist)
 
     # Export results
-    export_to_csv(prioritized_controls, os.path.join(output_dir, 'controls.csv'))
-    export_to_json(prioritized_controls, os.path.join(output_dir, 'controls.json'))
-    export_to_html(prioritized_controls, os.path.join(output_dir, 'controls.html'))
+    export_to_csv(prioritized_controls, os.path.join(output_dir, 'aws_controls.csv'))
+    export_to_json(prioritized_controls, os.path.join(output_dir, 'aws_controls.json'))
+    export_to_html(prioritized_controls, os.path.join(output_dir, 'aws_controls.html'))
 
 if __name__ == '__main__':
     main()
