@@ -15,8 +15,8 @@ check_requirements() {
         exit 1
     fi
 
-    python3 -m pip install --upgrade pip &> /dev/null
-    python3 -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
+    python3 -m pip install --quiet --upgrade pip &> /dev/null
+    python3 -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org --quiet
 }
 
 # Function to check data files and attempt to download if missing
