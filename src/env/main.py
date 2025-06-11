@@ -13,9 +13,11 @@ from exporter import export_to_csv, export_to_json, export_to_html
 
 def main():
     """Main function to run the NIST control prioritization project."""
-    aws_file = 'src/env/aws-12.12.2024_attack-16.1-enterprise.json'
-    mapping_file = 'src/env/attack_mapping.json'
-    output_dir = 'output'
+    # Get the project root directory (assuming main.py is in the root)
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    aws_file = os.path.join(project_root, 'src', 'env', 'aws-12.12.2024_attack-16.1-enterprise.json')
+    mapping_file = os.path.join(project_root, 'src', 'env', 'attack_mapping.json')
+    output_dir = os.path.join(project_root, 'output')
 
     # Create output directory if it doesn't exist
     if not os.path.exists(output_dir):
