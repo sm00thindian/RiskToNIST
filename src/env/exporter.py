@@ -22,16 +22,18 @@ FAMILY_MAPPING = {
 }
 
 def export_to_csv(data, file_path):
-    """Export prioritized controls to a CSV file.
+    """Export prioritized controls to a CSV file, sorted by risk level, mitigation coverage, technique count, and control ID.
 
     Args:
         data (list): List of control dictionaries.
         file_path (str): Path to save the CSV file.
     """
+    # Sort data to match HTML output
+    sorted_data = sorted(data, key=lambda x: (-x['risk_level'], -x['mitigation_coverage'], -x['technique_count'], x['id']))
     with open(file_path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['Control ID', 'Control Name', 'Family Name', 'Risk Level', 'Mitigation Coverage'])
-        for control in data:
+        for control in sorted_data:
             coverage = f"{control['mitigation_coverage']*100:.1f}% ({sum(1 for tech in control['associated_techniques'] if tech['mitigations'])}/{control['technique_count']})"
             writer.writerow([control['id'], control['name'], FAMILY_MAPPING.get(control['family'], control['family']), control['risk_level'], coverage])
 
@@ -90,19 +92,20 @@ def export_to_html(data, output_dir):
             Cross-reference with your AWS workload inventory to ensure relevance to your environment.
         </p>
         <p>
-            For Authorizing Officials (AOs), this report supports risk-based authorization decisions under NIST SP 800-37. High-risk controls (Risk Level 3 and 2) indicate critical vulnerabilities requiring immediate attention to meet compliance and security objectives. Use the mitigation coverage metric to evaluate control effectiveness and identify gaps where unmitigated techniques (Risk Level 0) may necessitate enhanced monitoring or alternative mitigations. Incorporate this data into your System Security Plan (SSP) to document control implementation and residual risk, ensuring informed authorization decisions.
+            For Authorizing Officials (AOs), this report supports risk-based authorization decisions under NIST SP 800-37. High-risk controls (Risk Level 3 and 2) indicate critical vulnerabilities requiring immediate attention to meet compliance and security objectives. Risk Level 1 controls suggest moderate risk with limited mitigations, warranting further evaluation. Use the mitigation coverage metric to evaluate control effectiveness and identify gaps where unmitigated techniques (Risk Level 0) may necessitate enhanced monitoring or alternative mitigations. Incorporate this data into your System Security Plan (SSP) to document control implementation and residual risk, ensuring informed authorization decisions.
         </p>
         <p>
             <strong>Risk Level</strong> (0–3) indicates the criticality of implementing each control:
             <ul>
-                <li><strong>0</strong>: No mitigation for at least one associated technique, indicating high risk.</li>
-                <li><strong>1</strong>: Minimal mitigation, moderate risk requiring attention.</li>
-                <li><strong>2</strong>: Partial mitigation, high risk with significant exposure.</li>
-                <li><strong>3</strong>: Significant mitigation, critical risk mitigated effectively by AWS services.</li>
+                <li><strong>0</strong>: No mitigation for at least one associated technique, indicating high risk. Prioritize these controls for additional mitigations or compensating controls to address unmitigated vulnerabilities.</li>
+                <li><strong>1</strong>: Minimal mitigation, indicating moderate risk. These controls have limited AWS protections and require further evaluation to determine if additional mitigations, monitoring, or risk acceptance are appropriate.</li>
+                <li><strong>2</strong>: Partial mitigation, indicating high risk with significant exposure. Implement these controls promptly, focusing on enhancing AWS mitigations or supplementing with other security measures.</li>
+                <li><strong>3</strong>: Significant mitigation, indicating critical risk effectively mitigated by AWS services. These controls are high-priority but well-protected, requiring validation of implementation.</li>
             </ul>
             Risk levels are determined by the minimum mitigation level of associated ATT&CK techniques, weighted by the effectiveness of AWS services (significant, partial, minimal, or none). 
             Within the same risk level, controls are prioritized by mitigation coverage (proportion of mitigated techniques) and number of associated techniques. 
-            Click "Details" to view detailed mitigation information for each control.</a>.
+            Click "Details" to view detailed mitigation information for each control. 
+            All HTML reports are also available as a single ZIP file: <a href="aws_controls.zip">aws_controls.zip</a>.
         </p>
 
         <h2>Control Summary</h2>
@@ -143,7 +146,7 @@ def export_to_html(data, output_dir):
         <style>{{ style }}</style>
     </head>
     <body>
-        <h1>Prioritized NIST 800-53 Control: {{ control.id }} - {{ control.name }}</h1>
+        <h1>Prioritized NIST 	int	{{ control.id }} - {{ control.name }}</h1>
         <p>
             This page provides detailed information for NIST 800-53 control {{ control.id }}, including its family, risk level, mitigation coverage, and associated MITRE ATT&CK techniques with AWS mitigations. 
             Return to the <a href="aws_controls_summary.html">Summary page</a> to view all controls. 
