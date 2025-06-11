@@ -85,8 +85,15 @@ def export_to_html(data, output_dir):
     <body>
         <h1>Prioritized NIST 800-53 Controls for AWS Workloads - Summary</h1>
         <p>
-            This report prioritizes NIST 800-53 controls for AWS workloads based on risk levels derived from associated MITRE ATT&CK techniques and their mitigations in AWS services. 
-            <strong>Risk Level</strong> (0–3) indicates the criticality of implementing each control, where:
+            This report enables organizations to prioritize NIST 800-53 control selection for AWS workloads by focusing on risk exposure derived from MITRE ATT&CK techniques and AWS service mitigations. 
+            For organizations driving risk-prioritized control selection, use this data to align security investments with your risk tolerance and threat profile. Start with high-risk controls (Risk Level 3 and 2), assess mitigation coverage to identify controls with robust AWS protections, and review unmitigated techniques in detail pages to address gaps through additional controls or compensating measures. 
+            Cross-reference with your AWS workload inventory to ensure relevance to your environment.
+        </p>
+        <p>
+            For Authorizing Officials (AOs), this report supports risk-based authorization decisions under NIST SP 800-37. High-risk controls (Risk Level 3 and 2) indicate critical vulnerabilities requiring immediate attention to meet compliance and security objectives. Use the mitigation coverage metric to evaluate control effectiveness and identify gaps where unmitigated techniques (Risk Level 0) may necessitate enhanced monitoring or alternative mitigations. Incorporate this data into your System Security Plan (SSP) to document control implementation and residual risk, ensuring informed authorization decisions.
+        </p>
+        <p>
+            <strong>Risk Level</strong> (0–3) indicates the criticality of implementing each control:
             <ul>
                 <li><strong>0</strong>: No mitigation for at least one associated technique, indicating high risk.</li>
                 <li><strong>1</strong>: Minimal mitigation, moderate risk requiring attention.</li>
