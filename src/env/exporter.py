@@ -28,9 +28,10 @@ def export_to_csv(data, file_path):
     """
     with open(file_path, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['Control ID', 'Control Name', 'Family Name', 'Risk Level'])
+        writer.writerow(['Control ID', 'Control Name', 'Family Name', 'Risk Level', 'Mitigation Coverage'])
         for control in data:
-            writer.writerow([control['id'], control['name'], FAMILY_MAPPING.get(control['family'], control['family']), control['risk_level']])
+            coverage = f"{control['mitigation_coverage']*100:.1f}% ({sum(1 for tech in control['associated_techniques'] if tech['mitigations'])}/{control['technique_count']})"
+            writer.writerow([control['id'], control['name'], FAMILY_MAPPING.get(control['family'], control['family']), control['risk_level'], coverage])
 
 def export_to_json(data, file_path):
     """Export prioritized controls to a JSON file with full details.
@@ -49,8 +50,8 @@ def export_to_html(data, file_path):
         data (list): List of control dictionaries.
         file_path (str): Path to save the HTML file.
     """
-    # Sort data by risk_level in descending order, then by control ID for stability
-    sorted_data = sorted(data, key=lambda x: (-x['risk_level'], x['id']))
+    # Sort data by risk_level (descending), mitigation_coverage (descending), technique_count (descending), then control ID
+    sorted_data = sorted(data, key=lambda x: (-x['risk_level'], -x['mitigation_coverage'], -x['technique_count'], x['id']))
 
     template = Template("""
     <!DOCTYPE html>
@@ -86,7 +87,8 @@ def export_to_html(data, file_path):
                 <li><strong>2</strong>: Partial mitigation, high risk with significant exposure.</li>
                 <li><strong>3</strong>: Significant mitigation, critical risk mitigated effectively by AWS services.</li>
             </ul>
-            Risk levels are determined by the minimum mitigation level of associated ATT&CK techniques, weighted by the effectiveness of AWS services (significant, partial, minimal, or none).
+            Risk levels are determined by the minimum mitigation level of associated ATT&CK techniques, weighted by the effectiveness of AWS services (significant, partial, minimal, or none). 
+            Within the same risk level, controls are prioritized by mitigation coverage (proportion of mitigated techniques) and number of associated techniques.
         </p>
 
         <h2>Control Summary</h2>
@@ -96,6 +98,7 @@ def export_to_html(data, file_path):
                 <th>Control Name</th>
                 <th>Family</th>
                 <th>Risk Level</th>
+                <th>Mitigation Coverage</th>
                 <th>Details</th>
             </tr>
             {% for control in sorted_data %}
@@ -104,6 +107,7 @@ def export_to_html(data, file_path):
                 <td>{{ control.name }}</td>
                 <td>{{ FAMILY_MAPPING.get(control.family, control.family) }}</td>
                 <td>{{ control.risk_level }}</td>
+                <td>{{ (control.mitigation_coverage*100)|round(1) }}% ({{ control.associated_techniques|selectattr('mitigations')|list|length }}/{{ control.technique_count }})</td>
                 <td><a href="#{{ control.id }}">View Details</a></td>
             </tr>
             {% endfor %}
@@ -111,8 +115,8 @@ def export_to_html(data, file_path):
 
         <h2>Detailed Control Information</h2>
         <p>
-            This table provides detailed information for each NIST 800-53 control, including its family, risk level, and associated MITRE ATT&CK techniques with AWS mitigations. 
-            Controls are sorted by risk level (highest first) to prioritize critical vulnerabilities. 
+            This table provides detailed information for each NIST 800-53 control, including its family, risk level, mitigation coverage, and associated MITRE ATT&CK techniques with AWS mitigations. 
+            Controls are sorted by risk level (highest first), then by mitigation coverage and technique count. 
             Techniques with "No AWS mitigations defined" indicate no specific AWS service mappings in the input data, suggesting potential increased risk due to unmitigated vulnerabilities. 
             Assess these techniques further based on your environment’s exposure and the technique’s severity. 
             Click on mitigation comments for additional details.
@@ -123,6 +127,7 @@ def export_to_html(data, file_path):
                 <th>Control Name</th>
                 <th>Family</th>
                 <th>Risk Level</th>
+                <th>Mitigation Coverage</th>
                 <th>Associated ATT&CK Techniques</th>
             </tr>
             {% for control in sorted_data %}
@@ -131,6 +136,7 @@ def export_to_html(data, file_path):
                 <td>{{ control.name }}</td>
                 <td>{{ FAMILY_MAPPING.get(control.family, control.family) }}</td>
                 <td>{{ control.risk_level }}</td>
+                <td>{{ (control.mitigation_coverage*100)|round(1) }}% ({{ control.associated_techniques|selectattr('mitigations')|list|length }}/{{ control.technique_count }})</td>
                 <td>
                     <table class="nested-table">
                         {% for tech in control.associated_techniques %}
