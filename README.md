@@ -11,6 +11,7 @@ The project, named RiskToNIST, is a Python-based tool that:
 - Identifies gaps in ATT&CK technique mappings to NIST controls for AWS workloads and prioritizes controls based on AWS mitigation data.
 
 ## Project Structure
+```
 RiskToNIST/ 
 ├── setup.sh # Setup script for virtual environment 
 ├── requirements.txt # Python dependencies 
@@ -56,6 +57,7 @@ RiskToNIST/
 │ ├── map_risks.py # Functions to map risks to controls 
 │ └── output.py # Functions to generate outputs 
 └── config.json # Configuration file for data sources
+```
 
 ## Getting Started
 1. **Setup Environment**: Run the `setup.sh` script to set up the virtual environment and install dependencies listed in `requirements.txt`.
