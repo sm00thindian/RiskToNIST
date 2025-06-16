@@ -42,12 +42,12 @@ RiskToNIST/
 │ ├── data_processing.py # Functions to parse datasets 
 │ ├── risk_calculation.py # Functions to calculate control risks 
 │ ├── output_generation.py # Functions to generate outputs 
-│ └── env/ # Environment-specific module for AWS integration 
-│ ├── main.py # Main script for AWS-focused control prioritization 
-│ ├── data_loader.py # Functions to load AWS and ATT&CK-to-NIST data 
-│ ├── gap_identifier.py # Functions to identify unmapped ATT&CK techniques 
-│ ├── risk_prioritizer.py # Functions to prioritize controls based on AWS mitigations 
-│ └── exporter.py # Functions to export AWS-related control data 
+  │ └── env/ # Environment-specific module for AWS integration 
+    │ ├── main.py # Main script for AWS-focused control prioritization 
+    │ ├── data_loader.py # Functions to load AWS and ATT&CK-to-NIST data 
+    │ ├── gap_identifier.py # Functions to identify unmapped ATT&CK techniques 
+    │ ├── risk_prioritizer.py # Functions to prioritize controls based on AWS mitigations 
+    │ └── exporter.py # Functions to export AWS-related control data 
 ├── templates/ # HTML template directory 
 │ └── controls.html # Jinja2 template for HTML output 
 ├── utils/ # Utility functions 
