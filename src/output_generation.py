@@ -201,7 +201,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
 
         <div class="section" id="risk-calc">
             <h2>How We Calculate Risk</h2>
-            <p>Each NIST control’s risk score is the sum of risk contributions from its associated vulnerabilities (CVEs). CVE risk is determined by severity, exploitability, and impact, per our data mappings. Risk scores are color-coded based on the dataset: <span class="risk-low">Low (&lt;{low_threshold:.1f})</span>, <span class="risk-medium">Medium ({low_threshold:.1f}-{high_threshold:.1f})</span>, <span class="risk-high">High (&gt;{high_threshold:.1f})</span>.</p>
+            <p>Each control’s risk score is the sum of risks from its associated vulnerabilities (CVEs), based on their severity, exploitability, and impact. To categorize risks, we look at all scores in this report. We find the median score (the middle value) and the highest score. Low risks are below half the median, meaning they’re less severe. Medium risks range from half the median to a midpoint between the median and the highest score, indicating moderate concern. High risks are above this midpoint, signaling urgent issues. These categories are shown with colors: <span class="risk-low">Low (<{low_threshold:.1f})</span>, <span class="risk-medium">Medium ({low_threshold:.1f}-{high_threshold:.1f})</span>, <span class="risk-high">High (>{high_threshold:.1f})</span>.</p>
         </div>
 
         <div class="section" id="controls">
@@ -220,7 +220,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                     <th scope="col">Associated CVEs</th>
                 </tr>
     """.format(
-        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 02:31 PM CDT
+        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 02:37 PM CDT
         total_cves=total_cves,
         total_controls=total_controls,
         core_control_count=core_control_count,
@@ -316,7 +316,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         </div>
 
         <script>
-            function toggleCVE(controlId) {{
+            function toggleCVE(controlId) {{ 
                 var content = document.getElementById('cve_' + controlId);
                 var button = document.querySelector('button[aria-controls="cve_' + controlId + '"]');
                 var isExpanded = content.style.display === 'block';
