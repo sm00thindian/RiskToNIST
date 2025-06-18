@@ -120,47 +120,47 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Cybersecurity Risk Assessment Report</title>
         <style>
-            body {
+            body {{
                 font-family: Arial, sans-serif;
                 line-height: 1.6;
                 margin: 20px;
                 background-color: #f9f9f9;
                 color: #333;
-            }
-            h1 {
+            }}
+            h1 {{
                 color: #2c3e50;
                 border-bottom: 2px solid #3498db;
                 padding-bottom: 10px;
-            }
-            h2 {
+            }}
+            h2 {{
                 color: #34495e;
                 margin-top: 20px;
-            }
-            .section {
+            }}
+            .section {{
                 background-color: #fff;
                 padding: 15px;
                 margin-bottom: 20px;
                 border-radius: 5px;
                 box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            }
-            table {
+            }}
+            table {{
                 width: 100%;
                 border-collapse: collapse;
                 margin: 20px 0;
-            }
-            th, td {
+            }}
+            th, td {{
                 border: 1px solid #ddd;
                 padding: 10px;
                 text-align: left;
-            }
-            th {
+            }}
+            th {{
                 background-color: #3498db;
                 color: white;
-            }
-            tr:nth-child(even) {
+            }}
+            tr:nth-child(even) {{
                 background-color: #f2f2f2;
-            }
-            .collapsible {
+            }}
+            .collapsible {{
                 background-color: #34495e;
                 color: white;
                 padding: 10px;
@@ -170,18 +170,18 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                 text-align: left;
                 outline: none;
                 margin-bottom: 5px;
-            }
-            .content {
+            }}
+            .content {{
                 display: none;
                 padding: 10px;
-            }
-            .core-yes {
+            }}
+            .core-yes {{
                 color: #27ae60;
                 font-weight: bold;
-            }
-            .core-no {
+            }}
+            .core-no {{
                 color: #e74c3c;
-            }
+            }}
         </style>
     </head>
     <body>
@@ -212,7 +212,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                 </tr>
     """
 
-    # Add table rows for each control with improved formatting
+    # Add table rows for each control
     for control_id, info in sorted_controls:
         control_info = nist_controls.get(control_id.upper(), {'family': 'Unknown', 'title': 'No description available'})
         family = control_info.get('family', 'Unknown')
@@ -223,14 +223,14 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         core_class = 'core-yes' if is_core == 'Yes' else 'core-no'
 
         html_content += f"""
-            <tr>
-                <td>{control_id.upper()}</td>
-                <td>{family}</td>
-                <td>{description}</td>
-                <td>{total_risk:.1f}</td>
-                <td class="{core_class}">{is_core}</td>
-                <td><span onclick="toggleCVE('{control_id}')" class="collapsible">View {cve_count} CVE{'s' if cve_count != 1 else ''}</span></td>
-            </tr>
+                <tr>
+                    <td>{control_id.upper()}</td>
+                    <td>{family}</td>
+                    <td>{description}</td>
+                    <td>{total_risk:.1f}</td>
+                    <td class="{core_class}">{is_core}</td>
+                    <td><span onclick="toggleCVE('{control_id}')" class="collapsible">View {cve_count} CVE{'s' if cve_count != 1 else ''}</span></td>
+                </tr>
         """
 
     html_content += """
@@ -246,8 +246,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
     for control_id, info in sorted_controls:
         if not info['cves']:
             continue
-        # Use string formatting for the dynamic control_id
-        cve_div = f"""
+        html_content += f"""
             <div id="cve_{control_id}" class="content">
                 <h3>CVEs for Control {control_id.upper()}</h3>
                 <table>
@@ -258,7 +257,6 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                         <th>Due Date</th>
                     </tr>
         """
-        html_content += cve_div
 
         sorted_cves = sorted(
             info['cves'],
@@ -293,19 +291,19 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         </div>
 
         <script>
-            function toggleCVE(controlId) {
+            function toggleCVE(controlId) {{
                 var content = document.getElementById('cve_' + controlId);
-                if (content.style.display === 'block') {
+                if (content.style.display === 'block') {{
                     content.style.display = 'none';
-                } else {
+                }} else {{
                     content.style.display = 'block';
-                }
-            }
+                }}
+            }}
         </script>
     </body>
     </html>
     """.format(
-        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 01:44 PM CDT
+        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 01:56 PM CDT
         total_cves=total_cves,
         year=datetime.now().year
     )
