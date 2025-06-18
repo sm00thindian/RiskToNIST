@@ -72,7 +72,6 @@ def generate_csv(control_to_risk, nist_controls, cve_details, output_file, core_
             continue
         try:
             control_info = nist_controls.get(control.upper(), {'family': 'Unknown', 'title': 'Unknown'})
-            # Aggregate CVEs into a comma-separated string
             cve_list = ', '.join(info['cves'])
             records.append({
                 'control_id': control,
@@ -109,7 +108,12 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         reverse=True
     )
 
-    # Start HTML content with improved styling
+    # Calculate summary statistics
+    total_controls = len(sorted_controls)
+    core_control_count = sum(1 for control_id, _ in sorted_controls if control_id.upper() in core_controls)
+    max_risk = max((info['total_risk'] for _, info in sorted_controls), default=0)
+
+    # Start HTML content with enhanced styling
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -118,49 +122,98 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Cybersecurity Risk Assessment Report</title>
         <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; background-color: #f9f9f9; color: #333; }}
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f9f9f9; color: #333; }}
             h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }}
-            h2 {{ color: #34495e; margin-top: 20px; }}
-            .section {{ background-color: #fff; padding: 15px; margin-bottom: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
+            h2 {{ color: #34495e; margin-top: 30px; }}
+            .section {{ background-color: #fff; padding: 20px; margin-bottom: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
             table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-            th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
-            th {{ background-color: #3498db; color: white; }}
+            th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
+            th {{ background-color: #3498db; color: white; position: sticky; top: 0; z-index: 10; }}
             tr:nth-child(even) {{ background-color: #f2f2f2; }}
-            .collapsible {{ background-color: #34495e; color: white; padding: 10px; cursor: pointer; border: none; width: 100%; text-align: left; outline: none; margin-bottom: 5px; }}
+            .collapsible {{ background-color: #34495e; color: white; padding: 10px; cursor: pointer; border: none; border-radius: 3px; display: inline-block; margin: 5px 0; }}
+            .collapsible:hover {{ background-color: #2c3e50; }}
             .content {{ display: none; padding: 10px; }}
             .core-yes {{ color: #27ae60; font-weight: bold; }}
             .core-no {{ color: #e74c3c; }}
+            .risk-low {{ color: #27ae60; }}
+            .risk-medium {{ color: #f39c12; }}
+            .risk-high {{ color: #e74c3c; }}
+            .risk-bar {{ background-color: #ddd; height: 10px; border-radius: 5px; overflow: hidden; margin: 5px 0; }}
+            .risk-bar-fill {{ height: 100%; transition: width 0.3s; }}
+            .risk-bar-low {{ background-color: #27ae60; }}
+            .risk-bar-medium {{ background-color: #f39c12; }}
+            .risk-bar-high {{ background-color: #e74c3c; }}
+            .toc {{ position: sticky; top: 0; background-color: #fff; padding: 10px; border-bottom: 1px solid #ddd; z-index: 20; }}
+            .toc a {{ margin-right: 15px; color: #3498db; text-decoration: none; }}
+            .toc a:hover {{ text-decoration: underline; }}
+            .controls {{ margin-bottom: 10px; }}
+            .control-btn {{ background-color: #3498db; color: white; padding: 8px 12px; margin-right: 10px; border: none; border-radius: 3px; cursor: pointer; }}
+            .control-btn:hover {{ background-color: #2980b9; }}
+            @media (max-width: 768px) {{
+                table {{ font-size: 14px; }}
+                th, td {{ padding: 8px; }}
+                .toc {{ font-size: 14px; }}
+                .collapsible, .control-btn {{ font-size: 14px; padding: 8px; }}
+            }}
+            @media (max-width: 480px) {{
+                table {{ display: block; overflow-x: auto; }}
+                th, td {{ min-width: 100px; }}
+            }}
         </style>
     </head>
     <body>
-        <h1>Cybersecurity Risk Assessment Report</h1>
+        <nav class="toc" role="navigation" aria-label="Table of Contents">
+            <a href="#summary">Summary</a>
+            <a href="#about">About</a>
+            <a href="#risk-calc">Risk Calculation</a>
+            <a href="#controls">Controls</a>
+            <a href="#cves">CVE Details</a>
+        </nav>
+
+        <h1 id="summary">Cybersecurity Risk Assessment Report</h1>
         <p>Generated by RiskToNIST on {generation_date}</p>
         <p>Total CVEs Analyzed: {total_cves}</p>
 
         <div class="section">
+            <h2>Summary</h2>
+            <ul>
+                <li><strong>Total Controls Assessed:</strong> {total_controls}</li>
+                <li><strong>Core Controls Identified:</strong> {core_control_count}</li>
+                <li><strong>Highest Risk Score:</strong> {max_risk:.1f}</li>
+            </ul>
+        </div>
+
+        <div class="section" id="about">
             <h2>About This Report</h2>
-            <p>This report provides a clear overview of cybersecurity risks within our systems by analyzing known vulnerabilities (CVEs) and linking them to NIST SP 800-53 security controls. It helps us identify the controls most at risk, enabling us to prioritize actions to enhance our security posture. Controls are ranked by risk level, with the highest-risk items listed first. Additionally, controls marked as 'Core' are part of our critical control set, as defined in <code>core_controls.csv</code>.</p>
+            <p>This report analyzes known vulnerabilities (CVEs) and maps them to NIST SP 800-53 security controls to identify cybersecurity risks in our systems. It prioritizes controls by risk level, with higher scores indicating urgent attention. Controls marked as 'Core' are critical, as defined in <code>core_controls.csv</code>. Use the navigation above to explore sections or click 'View CVEs' to see detailed vulnerability information.</p>
         </div>
 
-        <div class="section">
+        <div class="section" id="risk-calc">
             <h2>How We Calculate Risk</h2>
-            <p>The risk score for each NIST control is determined by summing the risk contributions from all associated vulnerabilities (CVEs). Each CVE's risk is based on its severity, exploitability, and potential impact, as outlined in our data mappings. Higher scores indicate controls that require urgent attention due to significant or numerous vulnerabilities.</p>
+            <p>Each NIST control’s risk score is the sum of risk contributions from its associated vulnerabilities (CVEs). CVE risk is determined by severity, exploitability, and impact, per our data mappings. Risk scores are color-coded: <span class="risk-low">Low (<5)</span>, <span class="risk-medium">Medium (5-10)</span>, <span class="risk-high">High (>10)</span>.</p>
         </div>
 
-        <div class="section">
+        <div class="section" id="controls">
             <h2>Risk-Based Control Assessment</h2>
-            <table>
+            <div class="controls">
+                <button class="control-btn" onclick="toggleAll(true)">Expand All CVEs</button>
+                <button class="control-btn" onclick="toggleAll(false)">Collapse All CVEs</button>
+            </div>
+            <table role="grid">
                 <tr>
-                    <th>Control ID</th>
-                    <th>Family</th>
-                    <th>Control Description</th>
-                    <th>Total Risk</th>
-                    <th>Is Core Control</th>
-                    <th>Associated CVEs</th>
+                    <th scope="col">Control ID</th>
+                    <th scope="col">Family</th>
+                    <th scope="col">Control Description</th>
+                    <th scope="col">Total Risk</th>
+                    <th scope="col">Is Core Control</th>
+                    <th scope="col">Associated CVEs</th>
                 </tr>
     """.format(
-        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 02:01 PM CDT
-        total_cves=total_cves
+        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 02:23 PM CDT
+        total_cves=total_cves,
+        total_controls=total_controls,
+        core_control_count=core_control_count,
+        max_risk=max_risk
     )
 
     # Add table rows for each control
@@ -172,24 +225,31 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         cve_count = len(info['cves'])
         is_core = 'Yes' if control_id.upper() in core_controls else 'No'
         core_class = 'core-yes' if is_core == 'Yes' else 'core-no'
+        risk_class = 'risk-low' if total_risk < 5 else 'risk-medium' if total_risk <= 10 else 'risk-high'
+        risk_bar_class = 'risk-bar-low' if total_risk < 5 else 'risk-bar-medium' if total_risk <= 10 else 'risk-bar-high'
+        risk_percentage = min(total_risk / max_risk * 100, 100) if max_risk > 0 else 0
 
         html_content += f"""
                 <tr>
                     <td>{control_id.upper()}</td>
                     <td>{family}</td>
                     <td>{description}</td>
-                    <td>{total_risk:.1f}</td>
+                    <td class="{risk_class}">{total_risk:.1f}
+                        <div class="risk-bar"><div class="risk-bar-fill {risk_bar_class}" style="width: {risk_percentage}%"></div></div>
+                    </td>
                     <td class="{core_class}">{is_core}</td>
-                    <td><span onclick="toggleCVE('{control_id}')" class="collapsible">View {cve_count} CVE{'s' if cve_count != 1 else ''}</span></td>
+                    <td>
+                        <button class="collapsible" onclick="toggleCVE('{control_id}')" onkeypress="if(event.key === 'Enter') toggleCVE('{control_id}')" aria-expanded="false" aria-controls="cve_{control_id}" tabindex="0">View {cve_count} CVE{'s' if cve_count != 1 else ''}</button>
+                    </td>
                 </tr>
         """
 
     html_content += """
             </table>
-            <p><em>Note: Controls are sorted by total risk, with the highest-risk items at the top. Click the 'View CVEs' link to see detailed vulnerability information for each control.</em></p>
+            <p><em>Note: Controls are sorted by total risk (highest first). Click 'View CVEs' to see vulnerabilities or use the buttons above to expand/collapse all.</em></p>
         </div>
 
-        <div class="section">
+        <div class="section" id="cves">
             <h2>Detailed CVE Information</h2>
     """
 
@@ -198,14 +258,14 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         if not info['cves']:
             continue
         html_content += f"""
-            <div id="cve_{control_id}" class="content">
-                <h3>CVEs for Control {control_id.upper()}</h3>
+            <div id="cve_{control_id}" class="content" role="region" aria-labelledby="cve_{control_id}_header">
+                <h3 id="cve_{control_id}_header">CVEs for Control {control_id.upper()}</h3>
                 <table>
                     <tr>
-                        <th>CVE ID</th>
-                        <th>Vulnerability Name</th>
-                        <th>Description</th>
-                        <th>Due Date</th>
+                        <th scope="col">CVE ID</th>
+                        <th scope="col">Vulnerability Name</th>
+                        <th scope="col">Description</th>
+                        <th scope="col">Due Date</th>
                     </tr>
         """
 
@@ -222,7 +282,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
             cve_info = cve_details.get(cve, {'name': 'Unknown', 'description': 'No description available', 'dueDate': 'N/A'})
             html_content += f"""
                     <tr>
-                        <td>{cve}</td>
+                        <td><a href="https://nvd.nist.gov/vuln/detail/{cve}" target="_blank" rel="noopener">{cve}</a></td>
                         <td>{cve_info['name']}</td>
                         <td>{cve_info['description']}</td>
                         <td>{cve_info['dueDate']}</td>
@@ -242,7 +302,23 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         </div>
 
         <script>
-            function toggleCVE(controlId) {{ var content = document.getElementById('cve_' + controlId); if (content.style.display === 'block') {{ content.style.display = 'none'; }} else {{ content.style.display = 'block'; }} }}
+            function toggleCVE(controlId) {{
+                var content = document.getElementById('cve_' + controlId);
+                var button = document.querySelector('button[aria-controls="cve_' + controlId + '"]');
+                var isExpanded = content.style.display === 'block';
+                content.style.display = isExpanded ? 'none' : 'block';
+                button.setAttribute('aria-expanded', !isExpanded);
+            }}
+            function toggleAll(expand) {{
+                var contents = document.querySelectorAll('.content');
+                var buttons = document.querySelectorAll('.collapsible');
+                contents.forEach(function(content) {{
+                    content.style.display = expand ? 'block' : 'none';
+                }});
+                buttons.forEach(function(button) {{
+                    button.setAttribute('aria-expanded', expand);
+                }});
+            }}
         </script>
     </body>
     </html>
