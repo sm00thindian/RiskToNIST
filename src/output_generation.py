@@ -246,9 +246,10 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
     for control_id, info in sorted_controls:
         if not info['cves']:
             continue
-        html_content += """
+        # Use string formatting for the dynamic control_id
+        cve_div = f"""
             <div id="cve_{control_id}" class="content">
-                <h3>CVEs for Control {control_id_upper}</h3>
+                <h3>CVEs for Control {control_id.upper()}</h3>
                 <table>
                     <tr>
                         <th>CVE ID</th>
@@ -256,7 +257,8 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                         <th>Description</th>
                         <th>Due Date</th>
                     </tr>
-        """.format(control_id=control_id, control_id_upper=control_id.upper())
+        """
+        html_content += cve_div
 
         sorted_cves = sorted(
             info['cves'],
@@ -303,7 +305,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
     </body>
     </html>
     """.format(
-        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),
+        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 01:44 PM CDT
         total_cves=total_cves,
         year=datetime.now().year
     )
