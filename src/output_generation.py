@@ -72,18 +72,16 @@ def generate_csv(control_to_risk, nist_controls, cve_details, output_file, core_
             continue
         try:
             control_info = nist_controls.get(control.upper(), {'family': 'Unknown', 'title': 'Unknown'})
-            for cve in info['cves']:
-                records.append({
-                    'control_id': control,
-                    'family': control_info['family'],
-                    'control_description': control_info['title'],
-                    'total_risk': info['total_risk'],
-                    'is_core_control': control.upper() in core_controls,
-                    'cveID': cve,
-                    'vulnerabilityName': cve_details[cve]['name'],
-                    'shortDescription': cve_details[cve]['description'],
-                    'dueDate': cve_details[cve]['dueDate']
-                })
+            # Aggregate CVEs into a comma-separated string
+            cve_list = ', '.join(info['cves'])
+            records.append({
+                'control_id': control,
+                'family': control_info['family'],
+                'control_description': control_info['title'],
+                'total_risk': info['total_risk'],
+                'is_core_control': control.upper() in core_controls,
+                'cves': cve_list
+            })
         except KeyError as e:
             logger.warning(f"Skipping control {control} due to missing data: {e}")
             continue
@@ -120,68 +118,18 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Cybersecurity Risk Assessment Report</title>
         <style>
-            body {{
-                font-family: Arial, sans-serif;
-                line-height: 1.6;
-                margin: 20px;
-                background-color: #f9f9f9;
-                color: #333;
-            }}
-            h1 {{
-                color: #2c3e50;
-                border-bottom: 2px solid #3498db;
-                padding-bottom: 10px;
-            }}
-            h2 {{
-                color: #34495e;
-                margin-top: 20px;
-            }}
-            .section {{
-                background-color: #fff;
-                padding: 15px;
-                margin-bottom: 20px;
-                border-radius: 5px;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin: 20px 0;
-            }}
-            th, td {{
-                border: 1px solid #ddd;
-                padding: 10px;
-                text-align: left;
-            }}
-            th {{
-                background-color: #3498db;
-                color: white;
-            }}
-            tr:nth-child(even) {{
-                background-color: #f2f2f2;
-            }}
-            .collapsible {{
-                background-color: #34495e;
-                color: white;
-                padding: 10px;
-                cursor: pointer;
-                border: none;
-                width: 100%;
-                text-align: left;
-                outline: none;
-                margin-bottom: 5px;
-            }}
-            .content {{
-                display: none;
-                padding: 10px;
-            }}
-            .core-yes {{
-                color: #27ae60;
-                font-weight: bold;
-            }}
-            .core-no {{
-                color: #e74c3c;
-            }}
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; background-color: #f9f9f9; color: #333; }}
+            h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }}
+            h2 {{ color: #34495e; margin-top: 20px; }}
+            .section {{ background-color: #fff; padding: 15px; margin-bottom: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
+            table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+            th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
+            th {{ background-color: #3498db; color: white; }}
+            tr:nth-child(even) {{ background-color: #f2f2f2; }}
+            .collapsible {{ background-color: #34495e; color: white; padding: 10px; cursor: pointer; border: none; width: 100%; text-align: left; outline: none; margin-bottom: 5px; }}
+            .content {{ display: none; padding: 10px; }}
+            .core-yes {{ color: #27ae60; font-weight: bold; }}
+            .core-no {{ color: #e74c3c; }}
         </style>
     </head>
     <body>
@@ -210,7 +158,10 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                     <th>Is Core Control</th>
                     <th>Associated CVEs</th>
                 </tr>
-    """
+    """.format(
+        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 02:01 PM CDT
+        total_cves=total_cves
+    )
 
     # Add table rows for each control
     for control_id, info in sorted_controls:
@@ -291,22 +242,11 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         </div>
 
         <script>
-            function toggleCVE(controlId) {{
-                var content = document.getElementById('cve_' + controlId);
-                if (content.style.display === 'block') {{
-                    content.style.display = 'none';
-                }} else {{
-                    content.style.display = 'block';
-                }}
-            }}
+            function toggleCVE(controlId) {{ var content = document.getElementById('cve_' + controlId); if (content.style.display === 'block') {{ content.style.display = 'none'; }} else {{ content.style.display = 'block'; }} }}
         </script>
     </body>
     </html>
-    """.format(
-        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 01:56 PM CDT
-        total_cves=total_cves,
-        year=datetime.now().year
-    )
+    """.format(year=datetime.now().year)
 
     with open(output_file, 'w') as f:
         f.write(html_content)
