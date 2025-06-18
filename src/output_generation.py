@@ -46,7 +46,7 @@ def generate_json(control_to_risk, nist_controls, cve_details, output_file, core
                 'family': control_info['family'],
                 'description': control_info['title'],
                 'total_risk': info['total_risk'],
-                'is_core_control': control.upper() in core_controls,  # New field
+                'is_core_control': control.upper() in core_controls,
                 'cves': cve_list
             })
         except KeyError as e:
@@ -78,7 +78,7 @@ def generate_csv(control_to_risk, nist_controls, cve_details, output_file, core_
                     'family': control_info['family'],
                     'control_description': control_info['title'],
                     'total_risk': info['total_risk'],
-                    'is_core_control': control.upper() in core_controls,  # New field
+                    'is_core_control': control.upper() in core_controls,
                     'cveID': cve,
                     'vulnerabilityName': cve_details[cve]['name'],
                     'shortDescription': cve_details[cve]['description'],
