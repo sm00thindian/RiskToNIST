@@ -210,10 +210,16 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                     <th>Is Core Control</th>
                     <th>Associated CVEs</th>
                 </tr>
-    """.format(
-        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),
-        total_cves=total_cves
-    )
+    """
+
+    html_content += """
+            </table>
+            <p><em>Note: Controls are sorted by total risk, with the highest-risk items at the top. Click the 'View CVEs' link to see detailed vulnerability information for each control.</em></p>
+        </div>
+
+        <div class="section">
+            <h2>Detailed CVE Information</h2>
+    """
 
     # Add table rows for each control with improved formatting
     for control_id, info in sorted_controls:
@@ -226,24 +232,15 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         core_class = 'core-yes' if is_core == 'Yes' else 'core-no'
 
         html_content += f"""
-                <tr>
-                    <td>{control_id.upper()}</td>
-                    <td>{family}</td>
-                    <td>{description}</td>
-                    <td>{total_risk:.1f}</td>
-                    <td class="{core_class}">{is_core}</td>
-                    <td><span onclick="toggleCVE('{control_id}')" class="collapsible">View {cve_count} CVE{'s' if cve_count != 1 else ''}</span></td>
-                </tr>
+            <tr>
+                <td>{control_id.upper()}</td>
+                <td>{family}</td>
+                <td>{description}</td>
+                <td>{total_risk:.1f}</td>
+                <td class="{core_class}">{is_core}</td>
+                <td><span onclick="toggleCVE('{control_id}')" class="collapsible">View {cve_count} CVE{'s' if cve_count != 1 else ''}</span></td>
+            </tr>
         """
-
-    html_content += """
-            </table>
-            <p><em>Note: Controls are sorted by total risk, with the highest-risk items at the top. Click the 'View CVEs' link to see detailed vulnerability information for each control.</em></p>
-        </div>
-
-        <div class="section">
-            <h2>Detailed CVE Information</h2>
-    """
 
     # Add detailed CVE sections for each control
     for control_id, info in sorted_controls:
@@ -305,7 +302,11 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         </script>
     </body>
     </html>
-    """.format(year=datetime.now().year)
+    """.format(
+        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),
+        total_cves=total_cves,
+        year=datetime.now().year
+    )
 
     with open(output_file, 'w') as f:
         f.write(html_content)
