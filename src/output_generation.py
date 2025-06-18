@@ -2,6 +2,7 @@ import json
 import pandas as pd
 import plotly.express as px
 import logging
+import csv  # Added missing import
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
