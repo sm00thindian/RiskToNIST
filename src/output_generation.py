@@ -4,6 +4,7 @@ import plotly.express as px
 import logging
 import csv
 from datetime import datetime
+import statistics
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -111,7 +112,16 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
     # Calculate summary statistics
     total_controls = len(sorted_controls)
     core_control_count = sum(1 for control_id, _ in sorted_controls if control_id.upper() in core_controls)
-    max_risk = max((info['total_risk'] for _, info in sorted_controls), default=0)
+    risk_scores = [info['total_risk'] for _, info in sorted_controls]
+    max_risk = max(risk_scores, default=0)
+    median_risk = statistics.median(risk_scores) if risk_scores else 0
+
+    # Define dynamic risk thresholds
+    low_threshold = 0.5 * median_risk if median_risk > 0 else 0
+    high_threshold = median_risk + 0.5 * (max_risk - median_risk) if max_risk > median_risk else median_risk
+    if max_risk == 0:  # Handle edge case
+        low_threshold = 0
+        high_threshold = 0
 
     # Start HTML content with enhanced styling
     html_content = """
@@ -180,6 +190,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                 <li><strong>Total Controls Assessed:</strong> {total_controls}</li>
                 <li><strong>Core Controls Identified:</strong> {core_control_count}</li>
                 <li><strong>Highest Risk Score:</strong> {max_risk:.1f}</li>
+                <li><strong>Median Risk Score:</strong> {median_risk:.1f}</li>
             </ul>
         </div>
 
@@ -190,7 +201,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
 
         <div class="section" id="risk-calc">
             <h2>How We Calculate Risk</h2>
-            <p>Each NIST control’s risk score is the sum of risk contributions from its associated vulnerabilities (CVEs). CVE risk is determined by severity, exploitability, and impact, per our data mappings. Risk scores are color-coded: <span class="risk-low">Low (<5)</span>, <span class="risk-medium">Medium (5-10)</span>, <span class="risk-high">High (>10)</span>.</p>
+            <p>Each NIST control’s risk score is the sum of risk contributions from its associated vulnerabilities (CVEs). CVE risk is determined by severity, exploitability, and impact, per our data mappings. Risk scores are color-coded based on the dataset: <span class="risk-low">Low (&lt;{low_threshold:.1f})</span>, <span class="risk-medium">Medium ({low_threshold:.1f}-{high_threshold:.1f})</span>, <span class="risk-high">High (&gt;{high_threshold:.1f})</span>.</p>
         </div>
 
         <div class="section" id="controls">
@@ -209,11 +220,14 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                     <th scope="col">Associated CVEs</th>
                 </tr>
     """.format(
-        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 02:23 PM CDT
+        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 02:31 PM CDT
         total_cves=total_cves,
         total_controls=total_controls,
         core_control_count=core_control_count,
-        max_risk=max_risk
+        max_risk=max_risk,
+        median_risk=median_risk,
+        low_threshold=low_threshold,
+        high_threshold=high_threshold
     )
 
     # Add table rows for each control
@@ -225,8 +239,8 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         cve_count = len(info['cves'])
         is_core = 'Yes' if control_id.upper() in core_controls else 'No'
         core_class = 'core-yes' if is_core == 'Yes' else 'core-no'
-        risk_class = 'risk-low' if total_risk < 5 else 'risk-medium' if total_risk <= 10 else 'risk-high'
-        risk_bar_class = 'risk-bar-low' if total_risk < 5 else 'risk-bar-medium' if total_risk <= 10 else 'risk-bar-high'
+        risk_class = 'risk-low' if total_risk <= low_threshold else 'risk-medium' if total_risk <= high_threshold else 'risk-high'
+        risk_bar_class = 'risk-bar-low' if total_risk <= low_threshold else 'risk-bar-medium' if total_risk <= high_threshold else 'risk-bar-high'
         risk_percentage = min(total_risk / max_risk * 100, 100) if max_risk > 0 else 0
 
         html_content += f"""
