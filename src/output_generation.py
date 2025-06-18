@@ -212,15 +212,6 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                 </tr>
     """
 
-    html_content += """
-            </table>
-            <p><em>Note: Controls are sorted by total risk, with the highest-risk items at the top. Click the 'View CVEs' link to see detailed vulnerability information for each control.</em></p>
-        </div>
-
-        <div class="section">
-            <h2>Detailed CVE Information</h2>
-    """
-
     # Add table rows for each control with improved formatting
     for control_id, info in sorted_controls:
         control_info = nist_controls.get(control_id.upper(), {'family': 'Unknown', 'title': 'No description available'})
@@ -242,13 +233,22 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
             </tr>
         """
 
+    html_content += """
+            </table>
+            <p><em>Note: Controls are sorted by total risk, with the highest-risk items at the top. Click the 'View CVEs' link to see detailed vulnerability information for each control.</em></p>
+        </div>
+
+        <div class="section">
+            <h2>Detailed CVE Information</h2>
+    """
+
     # Add detailed CVE sections for each control
     for control_id, info in sorted_controls:
         if not info['cves']:
             continue
-        html_content += f"""
+        html_content += """
             <div id="cve_{control_id}" class="content">
-                <h3>CVEs for Control {control_id.upper()}</h3>
+                <h3>CVEs for Control {control_id_upper}</h3>
                 <table>
                     <tr>
                         <th>CVE ID</th>
@@ -256,7 +256,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                         <th>Description</th>
                         <th>Due Date</th>
                     </tr>
-        """
+        """.format(control_id=control_id, control_id_upper=control_id.upper())
 
         sorted_cves = sorted(
             info['cves'],
