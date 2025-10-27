@@ -5,6 +5,9 @@ Provides functions to read configuration values and download data files.
 
 import json
 import sys
+import os
+import time
+import requests
 from src.data_ingestion import download_data
 
 def get_config_value(key, default):
@@ -18,35 +21,44 @@ def get_config_value(key, default):
     Returns:
         The value at the specified key path or the default value.
     """
+    config_file = 'config.json'
     try:
-        with open('config.json', 'r') as f:
+        if not os.path.isfile(config_file):
+            print(f"Warning: {config_file} not found. Using default for {key} ({default}).", file=sys.stderr)
+            return default
+        if not os.access(config_file, os.R_OK):
+            print(f"Warning: Permission denied reading {config_file}. Using default for {key} ({default}).", file=sys.stderr)
+            return default
+        with open(config_file, 'r') as f:
             config = json.load(f)
         keys = key.split('.')
         value = config
         for k in keys:
             value = value.get(k, default)
         if value is None:
-            print(f"Warning: Key {key} not found in config.json. Using default ({default}).", file=sys.stderr)
+            print(f"Warning: Key {key} not found in {config_file}. Using default ({default}).", file=sys.stderr)
             return default
         # Validate numeric values
         if key in ['logging.retention_days', 'logging.max_log_files']:
             if not isinstance(value, int) or value <= 0:
-                print(f"Warning: Invalid {key} ({value}) in config.json. Using default ({default}).", file=sys.stderr)
+                print(f"Warning: Invalid {key} ({value}) in {config_file}. Using default ({default}).", file=sys.stderr)
+                return default
+        # Validate directory paths
+        if key in ['logging.directory', 'output.directory']:
+            if not isinstance(value, str) or not value.strip():
+                print(f"Warning: Invalid {key} ({value}) in {config_file}. Using default ({default}).", file=sys.stderr)
                 return default
         return value
-    except FileNotFoundError:
-        print(f"Warning: config.json not found. Using default for {key} ({default}).", file=sys.stderr)
-        return default
     except json.JSONDecodeError as e:
-        print(f"Warning: Invalid JSON in config.json: {e}. Using default for {key} ({default}).", file=sys.stderr)
+        print(f"Warning: Invalid JSON in {config_file}: {e}. Using default for {key} ({default}).", file=sys.stderr)
         return default
     except Exception as e:
-        print(f"Warning: Failed to parse {key} from config.json: {e}. Using default ({default}).", file=sys.stderr)
+        print(f"Warning: Failed to parse {key} from {config_file}: {e}. Using default ({default}).", file=sys.stderr)
         return default
 
 def download_data_file(output_filename):
     """
-    Download a data file based on its output filename from config.json sources.
+    Download a data file based on its output filename from config.json sources with retries.
 
     Args:
         output_filename (str): The output filename (e.g., 'cisa_kev.json').
@@ -55,27 +67,48 @@ def download_data_file(output_filename):
         None
 
     Raises:
-        SystemExit: If no source is found or download fails.
+        SystemExit: If no source is found or all download attempts fail.
     """
+    config_file = 'config.json'
+    max_retries = 3
+    retry_delay = 5  # seconds
     try:
-        with open('config.json', 'r') as f:
-            config = json.load(f)
-        sources = [s for s in config.get('sources', []) if s.get('output') == output_filename]
-        if not sources:
-            print(f"Error: No source found for {output_filename} in config.json", file=sys.stderr)
+        if not os.path.isfile(config_file):
+            print(f"Error: {config_file} not found. Cannot download {output_filename}.", file=sys.stderr)
             sys.exit(1)
-        download_data(sources)
-    except FileNotFoundError:
-        print(f"Error: config.json not found. Cannot download {output_filename}.", file=sys.stderr)
-        sys.exit(1)
+        if not os.access(config_file, os.R_OK):
+            print(f"Error: Permission denied reading {config_file}. Cannot download {output_filename}.", file=sys.stderr)
+            sys.exit(1)
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        sources = [s for s in config.get('sources', []) if s.get('output') == output_filename and s.get('enabled', True)]
+        if not sources:
+            print(f"Error: No enabled source found for {output_filename} in {config_file}.", file=sys.stderr)
+            sys.exit(1)
+        for attempt in range(1, max_retries + 1):
+            try:
+                download_data(sources)
+                print(f"Successfully downloaded {output_filename}", file=sys.stderr)
+                return
+            except requests.RequestException as e:
+                print(f"Attempt {attempt}/{max_retries} failed for {output_filename}: {e}", file=sys.stderr)
+                if attempt < max_retries:
+                    print(f"Retrying in {retry_delay} seconds...", file=sys.stderr)
+                    time.sleep(retry_delay)
+                else:
+                    print(f"Error: Failed to download {output_filename} after {max_retries} attempts.", file=sys.stderr)
+                    print(f"URL: {sources[0].get('url', 'N/A')}", file=sys.stderr)
+                    print(f"Check download.log for details or use a local file: cp /path/to/{output_filename} data/{output_filename}", file=sys.stderr)
+                    print(f"Update {config_file} with: \"url\": \"file:///path/to/{output_filename}\"", file=sys.stderr)
+                    sys.exit(1)
     except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON in config.json: {e}. Cannot download {output_filename}.", file=sys.stderr)
+        print(f"Error: Invalid JSON in {config_file}: {e}. Cannot download {output_filename}.", file=sys.stderr)
+        sys.exit(1)
+    except PermissionError as e:
+        print(f"Error: Permission denied reading {config_file}: {e}. Cannot download {output_filename}.", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print(f"Error: Failed to download {output_filename}: {e}. Check download.log for details.", file=sys.stderr)
-        print(f"For {output_filename}, consider using local files:", file=sys.stderr)
-        print(f"  cp /path/to/{output_filename} data/{output_filename}", file=sys.stderr)
-        print(f"Update config.json with: \"url\": \"file:///path/to/{output_filename}\"", file=sys.stderr)
+        print(f"Error: Failed to process {config_file} for {output_filename}: {e}.", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == '__main__':
