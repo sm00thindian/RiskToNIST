@@ -15,34 +15,49 @@ rotate_log() {
     local retention_days=30
     local max_log_files=10
 
+    # Check if utils/parse_config.py exists
+    [ -f "utils/parse_config.py" ] || {
+        echo "Error: utils/parse_config.py not found" >&2
+        exit 1
+    }
+
     # Read logging settings from config.json using Python
     if [ -f "$config_file" ]; then
-        log_dir=$(python3 utils/parse_config.py get logging.directory logs 2>/dev/null) || {
-            echo "Warning: Failed to parse logging.directory. Using default ($log_dir)."
+        log_dir=$(python3 utils/parse_config.py get logging.directory logs 2>>run.log) || {
+            echo "Warning: Failed to parse logging.directory. Using default ($log_dir)." >&2
+            log_dir="logs"
         }
-        retention_days=$(python3 utils/parse_config.py get logging.retention_days 30 2>/dev/null) || {
-            echo "Warning: Failed to parse logging.retention_days. Using default ($retention_days)."
+        retention_days=$(python3 utils/parse_config.py get logging.retention_days 30 2>>run.log) || {
+            echo "Warning: Failed to parse logging.retention_days. Using default ($retention_days)." >&2
+            retention_days=30
         }
-        max_log_files=$(python3 utils/parse_config.py get logging.max_log_files 10 2>/dev/null) || {
-            echo "Warning: Failed to parse logging.max_log_files. Using default ($max_log_files)."
+        max_log_files=$(python3 utils/parse_config.py get logging.max_log_files 10 2>>run.log) || {
+            echo "Warning: Failed to parse logging.max_log_files. Using default ($max_log_files)." >&2
+            max_log_files=10
         }
 
         # Validate retention_days and max_log_files
         if ! [[ "$retention_days" =~ ^[0-9]+$ ]] || [ "$retention_days" -le 0 ]; then
-            echo "Warning: Invalid retention_days ($retention_days) in $config_file. Using default (30 days)."
+            echo "Warning: Invalid retention_days ($retention_days) from config. Using default (30 days)." >&2
             retention_days=30
         fi
         if ! [[ "$max_log_files" =~ ^[0-9]+$ ]] || [ "$max_log_files" -le 0 ]; then
-            echo "Warning: Invalid max_log_files ($max_log_files) in $config_file. Using default (10)."
+            echo "Warning: Invalid max_log_files ($max_log_files) from config. Using default (10)." >&2
             max_log_files=10
         fi
     else
-        echo "Warning: $config_file missing. Using default logging settings (dir=$log_dir, retention=$retention_days days, max_files=$max_log_files)."
+        echo "Warning: $config_file missing. Using default logging settings (dir=$log_dir, retention=$retention_days days, max_files=$max_log_files)." >&2
     fi
+
+    # Ensure log_dir is not empty
+    [ -z "$log_dir" ] && {
+        echo "Error: Log directory cannot be empty. Using default (logs)." >&2
+        log_dir="logs"
+    }
 
     # Ensure log directory exists
     mkdir -p "$log_dir" || {
-        echo "Error: Failed to create log directory $log_dir"
+        echo "Error: Failed to create log directory $log_dir" >&2
         exit 1
     }
 
@@ -51,20 +66,20 @@ rotate_log() {
     if [ -f "$full_log_file" ]; then
         local timestamp=$(date +%Y%m%d_%H%M)
         mv "$full_log_file" "$log_dir/${log_file%.*}_$timestamp.log" || {
-            echo "Warning: Failed to rotate $full_log_file. Continuing..."
+            echo "Warning: Failed to rotate $full_log_file. Continuing..." >&2
         }
     fi
 
     # Clean up old log files based on retention_days
     echo "Cleaning up log files older than $retention_days days..."
     find "$log_dir" -name "run_*.log" -mtime "+$retention_days" -delete 2>/dev/null || {
-        echo "Warning: Failed to delete old log files. Check permissions."
+        echo "Warning: Failed to delete old log files. Check permissions." >&2
     }
 
     # Enforce maximum log file limit
     echo "Enforcing maximum of $max_log_files log files..."
     ls -t "$log_dir/run_*.log" 2>/dev/null | tail -n +"$((max_log_files + 1))" | xargs -I {} rm "$log_dir/{}" 2>/dev/null || {
-        echo "Warning: Failed to enforce max_log_files limit. Check permissions."
+        echo "Warning: Failed to enforce max_log_files limit. Check permissions." >&2
     }
 
     # Redirect all output to new run.log
@@ -74,15 +89,26 @@ rotate_log() {
 # Function to ensure the output directory exists
 ensure_output_directory() {
     local output_dir="output"
+    # Check if utils/parse_config.py exists
+    [ -f "utils/parse_config.py" ] || {
+        echo "Error: utils/parse_config.py not found" >&2
+        exit 1
+    }
     # Read output directory from config.json
     if [ -f "config.json" ]; then
-        output_dir=$(python3 utils/parse_config.py get output.directory output 2>/dev/null) || {
-            echo "Warning: Failed to parse output.directory. Using default ($output_dir)."
+        output_dir=$(python3 utils/parse_config.py get output.directory output 2>>run.log) || {
+            echo "Warning: Failed to parse output.directory. Using default ($output_dir)." >&2
+            output_dir="output"
         }
     fi
+    # Ensure output_dir is not empty
+    [ -z "$output_dir" ] && {
+        echo "Error: Output directory cannot be empty. Using default (output)." >&2
+        output_dir="output"
+    }
     echo "Ensuring output directory exists..."
     mkdir -p "$output_dir" || {
-        echo "Error: Failed to create output directory $output_dir"
+        echo "Error: Failed to create output directory $output_dir" >&2
         exit 1
     }
     echo "Output directory $output_dir ready"
@@ -92,19 +118,19 @@ ensure_output_directory() {
 check_requirements() {
     echo "Checking Python dependencies..."
     if ! command -v python3 &> /dev/null; then
-        echo "Error: Python 3 is not installed. Please install Python 3."
+        echo "Error: Python 3 is not installed. Please install Python 3." >&2
         exit 1
     fi
 
     echo "Upgrading pip..."
     python3 -m pip install --quiet --upgrade pip &> /dev/null || {
-        echo "Error: Failed to upgrade pip. Check network or permissions."
+        echo "Error: Failed to upgrade pip. Check network or permissions." >&2
         exit 1
     }
 
     echo "Installing dependencies from requirements.txt..."
     python3 -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org --quiet || {
-        echo "Error: Failed to install dependencies. Check requirements.txt or network."
+        echo "Error: Failed to install dependencies. Check requirements.txt or network." >&2
         exit 1
     }
 }
@@ -119,11 +145,16 @@ check_data_files() {
         "data/kev_attack_mapping.json"
     )
 
+    [ -f "utils/parse_config.py" ] || {
+        echo "Error: utils/parse_config.py not found" >&2
+        exit 1
+    }
+
     for file in "${data_files[@]}"; do
         if [ ! -f "$file" ]; then
             echo "Warning: $file not found in data/. Attempting to download..."
-            python3 utils/parse_config.py download "$(basename "$file")" || {
-                echo "Error: Failed to download $file"
+            python3 utils/parse_config.py download "$(basename "$file")" 2>>run.log || {
+                echo "Error: Failed to download $file" >&2
                 exit 1
             }
         fi
@@ -133,14 +164,14 @@ check_data_files() {
 # Function to run the main script
 run_main() {
     echo "Executing main script..."
-    [ -f "run.py" ] || { echo "Error: run.py not found"; exit 1; }
+    [ -f "run.py" ] || { echo "Error: run.py not found" >&2; exit 1; }
     python3 run.py || {
-        echo "Error: Failed to execute run.py"
+        echo "Error: Failed to execute run.py" >&2
         exit 1
     }
-    [ -f "src/env/main.py" ] || { echo "Error: src/env/main.py not found"; exit 1; }
+    [ -f "src/env/main.py" ] || { echo "Error: src/env/main.py not found" >&2; exit 1; }
     python3 src/env/main.py || {
-        echo "Error: Failed to execute src/env/main.py"
+        echo "Error: Failed to execute src/env/main.py" >&2
         exit 1
     }
 }
