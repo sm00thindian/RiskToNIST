@@ -22,17 +22,17 @@ rotate_log() {
     }
 
     # Read logging settings from config.json using Python
-    if [ -f "$config_file" ]; then
-        log_dir=$(python3 utils/parse_config.py get logging.directory logs 2>>run.log) || {
-            echo "Warning: Failed to parse logging.directory. Using default ($log_dir)." >&2
+    if [ -f "$config_file" ] && [ -r "$config_file" ]; then
+        log_dir=$(python3 utils/parse_config.py get logging.directory logs 2>>temp_setup_errors.log) || {
+            echo "Warning: Failed to parse logging.directory. Using default ($log_dir). See temp_setup_errors.log." >&2
             log_dir="logs"
         }
-        retention_days=$(python3 utils/parse_config.py get logging.retention_days 30 2>>run.log) || {
-            echo "Warning: Failed to parse logging.retention_days. Using default ($retention_days)." >&2
+        retention_days=$(python3 utils/parse_config.py get logging.retention_days 30 2>>temp_setup_errors.log) || {
+            echo "Warning: Failed to parse logging.retention_days. Using default ($retention_days). See temp_setup_errors.log." >&2
             retention_days=30
         }
-        max_log_files=$(python3 utils/parse_config.py get logging.max_log_files 10 2>>run.log) || {
-            echo "Warning: Failed to parse logging.max_log_files. Using default ($max_log_files)." >&2
+        max_log_files=$(python3 utils/parse_config.py get logging.max_log_files 10 2>>temp_setup_errors.log) || {
+            echo "Warning: Failed to parse logging.max_log_files. Using default ($max_log_files). See temp_setup_errors.log." >&2
             max_log_files=10
         }
 
@@ -46,7 +46,7 @@ rotate_log() {
             max_log_files=10
         fi
     else
-        echo "Warning: $config_file missing. Using default logging settings (dir=$log_dir, retention=$retention_days days, max_files=$max_log_files)." >&2
+        echo "Warning: $config_file missing or not readable. Using default logging settings (dir=$log_dir, retention=$retention_days days, max_files=$max_log_files)." >&2
     fi
 
     # Ensure log_dir is not empty
@@ -95,9 +95,9 @@ ensure_output_directory() {
         exit 1
     }
     # Read output directory from config.json
-    if [ -f "config.json" ]; then
-        output_dir=$(python3 utils/parse_config.py get output.directory output 2>>run.log) || {
-            echo "Warning: Failed to parse output.directory. Using default ($output_dir)." >&2
+    if [ -f "config.json" ] && [ -r "config.json" ]; then
+        output_dir=$(python3 utils/parse_config.py get output.directory output 2>>temp_setup_errors.log) || {
+            echo "Warning: Failed to parse output.directory. Using default ($output_dir). See temp_setup_errors.log." >&2
             output_dir="output"
         }
     fi
@@ -138,27 +138,71 @@ check_requirements() {
 # Function to check data files and attempt to download if missing
 check_data_files() {
     echo "Checking data files..."
-    local data_files=(
-        "data/cisa_kev.json"
-        "data/nist_sp800_53_catalog.json"
-        "data/attack_mapping.json"
-        "data/kev_attack_mapping.json"
-    )
-
     [ -f "utils/parse_config.py" ] || {
         echo "Error: utils/parse_config.py not found" >&2
         exit 1
     }
 
-    for file in "${data_files[@]}"; do
-        if [ ! -f "$file" ]; then
-            echo "Warning: $file not found in data/. Attempting to download..."
-            python3 utils/parse_config.py download "$(basename "$file")" 2>>run.log || {
-                echo "Error: Failed to download $file" >&2
-                exit 1
-            }
+    # Read sources from config.json
+    local sources
+    if [ -f "config.json" ] && [ -r "config.json" ]; then
+        sources=$(python3 -c "import json; print('\n'.join(s['output'] for s in json.load(open('config.json')).get('sources', []) if s.get('enabled', True)))" 2>>temp_setup_errors.log) || {
+            echo "Warning: Failed to parse sources from config.json. Using default file list. See temp_setup_errors.log." >&2
+            sources="
+                cisa_kev.json
+                cisa_kev_schema.json
+                attack_mapping.json
+                kev_attack_mapping.json
+                nist_sp800_53_catalog.json
+            "
+        }
+    else
+        echo "Warning: config.json missing or not readable. Using default file list." >&2
+        sources="
+            cisa_kev.json
+            cisa_kev_schema.json
+            attack_mapping.json
+            kev_attack_mapping.json
+            nist_sp800_53_catalog.json
+        "
+    }
+
+    # Ensure data directory exists and is writable
+    local data_dir="data"
+    mkdir -p "$data_dir" || {
+        echo "Error: Failed to create data directory $data_dir" >&2
+        exit 1
+    }
+    [ -w "$data_dir" ] || {
+        echo "Error: Data directory $data_dir is not writable" >&2
+        exit 1
+    }
+
+    # Check and download each file
+    local max_retries=3
+    local retry_delay=5
+    while IFS= read -r output_filename; do
+        [ -z "$output_filename" ] && continue
+        local file="data/$output_filename"
+        if [ ! -f "$file" ] || [ ! -s "$file" ]; then
+            echo "Warning: $file not found or empty. Attempting to download..."
+            local attempt=1
+            while [ $attempt -le $max_retries ]; do
+                echo "Download attempt $attempt of $max_retries for $output_filename..."
+                if python3 utils/parse_config.py download "$output_filename" 2>>temp_setup_errors.log; then
+                    break
+                else
+                    echo "Warning: Download attempt $attempt failed for $output_filename. See temp_setup_errors.log." >&2
+                    if [ $attempt -eq $max_retries ]; then
+                        echo "Error: Failed to download $output_filename after $max_retries attempts." >&2
+                        exit 1
+                    fi
+                    sleep $retry_delay
+                    ((attempt++))
+                fi
+            done
         fi
-    done
+    done <<< "$sources"
 }
 
 # Function to run the main script
@@ -183,5 +227,5 @@ ensure_output_directory
 check_requirements
 check_data_files
 run_main
-
+rm -f temp_setup_errors.log 2>/dev/null
 echo "Execution completed. Check logs/run.log for details and output files in the 'output' directory (risk_assessment*)."
