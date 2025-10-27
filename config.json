@@ -37,6 +37,8 @@
     "append_timestamp": false
   },
   "logging": {
-    "retention_days": 30
+    "directory": "logs",
+    "retention_days": 30,
+    "max_log_files": 10
   }
 }
