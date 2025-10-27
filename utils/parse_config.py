@@ -64,10 +64,7 @@ def download_data_file(output_filename):
         output_filename (str): The output filename (e.g., 'cisa_kev.json').
 
     Returns:
-        None
-
-    Raises:
-        SystemExit: If no source is found or all download attempts fail.
+        bool: True if download succeeds, False otherwise.
     """
     config_file = 'config.json'
     max_retries = 3
@@ -75,41 +72,42 @@ def download_data_file(output_filename):
     try:
         if not os.path.isfile(config_file):
             print(f"Error: {config_file} not found. Cannot download {output_filename}.", file=sys.stderr)
-            sys.exit(1)
+            return False
         if not os.access(config_file, os.R_OK):
             print(f"Error: Permission denied reading {config_file}. Cannot download {output_filename}.", file=sys.stderr)
-            sys.exit(1)
+            return False
         with open(config_file, 'r') as f:
             config = json.load(f)
         sources = [s for s in config.get('sources', []) if s.get('output') == output_filename and s.get('enabled', True)]
         if not sources:
             print(f"Error: No enabled source found for {output_filename} in {config_file}.", file=sys.stderr)
-            sys.exit(1)
+            return False
         for attempt in range(1, max_retries + 1):
             try:
-                download_data(sources)
-                print(f"Successfully downloaded {output_filename}", file=sys.stderr)
-                return
+                if download_data(sources):
+                    return True
+                else:
+                    print(f"Attempt {attempt}/{max_retries} failed for {output_filename}: Invalid content or partial failure.", file=sys.stderr)
             except requests.RequestException as e:
                 print(f"Attempt {attempt}/{max_retries} failed for {output_filename}: {e}", file=sys.stderr)
-                if attempt < max_retries:
-                    print(f"Retrying in {retry_delay} seconds...", file=sys.stderr)
-                    time.sleep(retry_delay)
-                else:
-                    print(f"Error: Failed to download {output_filename} after {max_retries} attempts.", file=sys.stderr)
-                    print(f"URL: {sources[0].get('url', 'N/A')}", file=sys.stderr)
-                    print(f"Check download.log for details or use a local file: cp /path/to/{output_filename} data/{output_filename}", file=sys.stderr)
-                    print(f"Update {config_file} with: \"url\": \"file:///path/to/{output_filename}\"", file=sys.stderr)
-                    sys.exit(1)
+            if attempt < max_retries:
+                print(f"Retrying in {retry_delay} seconds...", file=sys.stderr)
+                time.sleep(retry_delay)
+            else:
+                print(f"Error: Failed to download {output_filename} after {max_retries} attempts.", file=sys.stderr)
+                print(f"URL: {sources[0].get('url', 'N/A')}", file=sys.stderr)
+                print(f"Check logs/download.log for details or use a local file: cp /path/to/{output_filename} data/{output_filename}", file=sys.stderr)
+                print(f"Update {config_file} with: \"url\": \"file:///path/to/{output_filename}\"", file=sys.stderr)
+                return False
     except json.JSONDecodeError as e:
         print(f"Error: Invalid JSON in {config_file}: {e}. Cannot download {output_filename}.", file=sys.stderr)
-        sys.exit(1)
+        return False
     except PermissionError as e:
         print(f"Error: Permission denied reading {config_file}: {e}. Cannot download {output_filename}.", file=sys.stderr)
-        sys.exit(1)
+        return False
     except Exception as e:
         print(f"Error: Failed to process {config_file} for {output_filename}: {e}.", file=sys.stderr)
-        sys.exit(1)
+        return False
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
@@ -126,7 +124,7 @@ if __name__ == '__main__':
         if len(sys.argv) != 3:
             print("Error: Usage: python3 parse_config.py download <output_filename>", file=sys.stderr)
             sys.exit(1)
-        download_data_file(sys.argv[2])
+        sys.exit(0 if download_data_file(sys.argv[2]) else 1)
     else:
         print(f"Error: Unknown command {command}", file=sys.stderr)
         sys.exit(1)
