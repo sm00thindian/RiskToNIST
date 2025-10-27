@@ -94,7 +94,7 @@ def download_data_file(output_filename):
                 print(f"Retrying in {retry_delay} seconds...", file=sys.stderr)
                 time.sleep(retry_delay)
             else:
-                print(f"Error: Failed to download {output_filename} after {max_retries} attempts.", file=sys.stderr)
+                print(f"Warning: Failed to download {output_filename} after {max_retries} attempts.", file=sys.stderr)
                 print(f"URL: {sources[0].get('url', 'N/A')}", file=sys.stderr)
                 print(f"Check logs/download.log for details or use a local file: cp /path/to/{output_filename} data/{output_filename}", file=sys.stderr)
                 print(f"Update {config_file} with: \"url\": \"file:///path/to/{output_filename}\"", file=sys.stderr)
