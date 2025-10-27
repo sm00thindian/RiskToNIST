@@ -10,6 +10,40 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def load_config(config_file='config.json'):
+    """
+    Load configuration from a JSON file.
+
+    Args:
+        config_file (str): Path to the configuration file. Defaults to 'config.json'.
+
+    Returns:
+        dict: Configuration data with output settings.
+
+    Raises:
+        FileNotFoundError: If the config file is not found.
+        json.JSONDecodeError: If the config file is invalid JSON.
+    """
+    try:
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        # Set default output configuration if not specified
+        config.setdefault('output', {
+            'directory': 'output',
+            'prefix': 'risk_assessment',
+            'append_timestamp': False
+        })
+        return config
+    except FileNotFoundError:
+        logger.warning(f"Config file {config_file} not found. Using default output settings.")
+        return {'output': {'directory': 'output', 'prefix': 'risk_assessment', 'append_timestamp': False}}
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in {config_file}: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Error reading config file {config_file}: {e}")
+        raise
+
 def load_core_controls(file_path):
     """
     Load core NIST SP 800-53 controls from a CSV file into a set.
@@ -38,7 +72,7 @@ def load_core_controls(file_path):
         logger.error(f"Error reading core controls file {file_path}: {e}")
     return core_controls
 
-def ensure_output_directory(output_dir='output'):
+def ensure_output_directory(output_dir):
     """
     Ensure the output directory exists, creating it if necessary.
 
@@ -47,6 +81,9 @@ def ensure_output_directory(output_dir='output'):
 
     Returns:
         None
+
+    Raises:
+        Exception: If the directory cannot be created.
     """
     try:
         os.makedirs(output_dir, exist_ok=True)
@@ -55,7 +92,24 @@ def ensure_output_directory(output_dir='output'):
         logger.error(f"Failed to create output directory {output_dir}: {e}")
         raise
 
-def generate_json(control_to_risk, nist_controls, cve_details, output_file='output/risk_assessment.json', core_controls_file='core_controls.csv'):
+def get_output_filename(base_dir, prefix, extension, append_timestamp):
+    """
+    Generate the output filename with optional timestamp.
+
+    Args:
+        base_dir (str): Output directory.
+        prefix (str): Filename prefix.
+        extension (str): File extension (e.g., 'json', 'csv', 'html').
+        append_timestamp (bool): Whether to append a timestamp to the filename.
+
+    Returns:
+        str: Full path to the output file.
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M") if append_timestamp else ""
+    filename = f"{prefix}{f'_{timestamp}' if timestamp else ''}.{extension}"
+    return os.path.join(base_dir, filename)
+
+def generate_json(control_to_risk, nist_controls, cve_details, config_file='config.json', core_controls_file='core_controls.csv'):
     """
     Generate a JSON file with risk assessment data for NIST controls.
 
@@ -63,13 +117,20 @@ def generate_json(control_to_risk, nist_controls, cve_details, output_file='outp
         control_to_risk (dict): Mapping of controls to their risk scores and associated CVEs.
         nist_controls (dict): NIST SP 800-53 control catalog.
         cve_details (dict): Details of CVEs (name, description, due date).
-        output_file (str): Path to the output JSON file. Defaults to 'output/risk_assessment.json'.
+        config_file (str): Path to the configuration file. Defaults to 'config.json'.
         core_controls_file (str): Path to the core controls CSV file.
 
     Returns:
         None
     """
-    ensure_output_directory(os.path.dirname(output_file))
+    config = load_config(config_file)
+    output_file = get_output_filename(
+        config['output']['directory'],
+        config['output']['prefix'],
+        'json',
+        config['output']['append_timestamp']
+    )
+    ensure_output_directory(config['output']['directory'])
     core_controls = load_core_controls(core_controls_file)
     
     if not control_to_risk:
@@ -108,7 +169,7 @@ def generate_json(control_to_risk, nist_controls, cve_details, output_file='outp
         logger.error(f"Failed to write JSON to {output_file}: {e}")
         raise
 
-def generate_csv(control_to_risk, nist_controls, cve_details, output_file='output/risk_assessment.csv', core_controls_file='core_controls.csv'):
+def generate_csv(control_to_risk, nist_controls, cve_details, config_file='config.json', core_controls_file='core_controls.csv'):
     """
     Generate a CSV file with risk assessment data for NIST controls.
 
@@ -116,13 +177,20 @@ def generate_csv(control_to_risk, nist_controls, cve_details, output_file='outpu
         control_to_risk (dict): Mapping of controls to their risk scores and associated CVEs.
         nist_controls (dict): NIST SP 800-53 control catalog.
         cve_details (dict): Details of CVEs (name, description, due date).
-        output_file (str): Path to the output CSV file. Defaults to 'output/risk_assessment.csv'.
+        config_file (str): Path to the configuration file. Defaults to 'config.json'.
         core_controls_file (str): Path to the core controls CSV file.
 
     Returns:
         None
     """
-    ensure_output_directory(os.path.dirname(output_file))
+    config = load_config(config_file)
+    output_file = get_output_filename(
+        config['output']['directory'],
+        config['output']['prefix'],
+        'csv',
+        config['output']['append_timestamp']
+    )
+    ensure_output_directory(config['output']['directory'])
     core_controls = load_core_controls(core_controls_file)
     
     if not control_to_risk:
@@ -168,7 +236,7 @@ def generate_csv(control_to_risk, nist_controls, cve_details, output_file='outpu
         logger.error(f"Failed to write CSV to {output_file}: {e}")
         raise
 
-def generate_html(control_to_risk, nist_controls, cve_details, total_cves, output_file='output/risk_assessment.html', core_controls_file='core_controls.csv'):
+def generate_html(control_to_risk, nist_controls, cve_details, total_cves, config_file='config.json', core_controls_file='core_controls.csv'):
     """
     Generate an HTML report with risk assessment data for NIST controls.
 
@@ -177,13 +245,20 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         nist_controls (dict): NIST SP 800-53 control catalog.
         cve_details (dict): Details of CVEs (name, description, due date).
         total_cves (int): Total number of CVEs analyzed.
-        output_file (str): Path to the output HTML file. Defaults to 'output/risk_assessment.html'.
+        config_file (str): Path to the configuration file. Defaults to 'config.json'.
         core_controls_file (str): Path to the core controls CSV file.
 
     Returns:
         None
     """
-    ensure_output_directory(os.path.dirname(output_file))
+    config = load_config(config_file)
+    output_file = get_output_filename(
+        config['output']['directory'],
+        config['output']['prefix'],
+        'html',
+        config['output']['append_timestamp']
+    )
+    ensure_output_directory(config['output']['directory'])
     core_controls = load_core_controls(core_controls_file)
     
     # Sort controls by total_risk in descending order
@@ -216,43 +291,43 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Cybersecurity Risk Assessment Report</title>
         <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f9f9f9; color: #333; }}
-            h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }}
-            h2 {{ color: #34495e; margin-top: 30px; }}
-            .section {{ background-color: #fff; padding: 20px; margin-bottom: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
-            table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-            th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
-            th {{ background-color: #3498db; color: white; position: sticky; top: 0; z-index: 10; }}
-            tr:nth-child(even) {{ background-color: #f2f2f2; }}
-            .collapsible {{ background-color: #34495e; color: white; padding: 10px; cursor: pointer; border: none; border-radius: 3px; display: inline-block; margin: 5px 0; }}
-            .collapsible:hover {{ background-color: #2c3e50; }}
-            .content {{ display: none; padding: 10px; }}
-            .core-yes {{ color: #27ae60; font-weight: bold; }}
-            .core-no {{ color: #e74c3c; }}
-            .risk-low {{ color: #27ae60; }}
-            .risk-medium {{ color: #f39c12; }}
-            .risk-high {{ color: #e74c3c; }}
-            .risk-bar {{ background-color: #ddd; height: 10px; border-radius: 5px; overflow: hidden; margin: 5px 0; }}
-            .risk-bar-fill {{ height: 100%; transition: width 0.3s; }}
-            .risk-bar-low {{ background-color: #27ae60; }}
-            .risk-bar-medium {{ background-color: #f39c12; }}
-            .risk-bar-high {{ background-color: #e74c3c; }}
-            .toc {{ position: sticky; top: 0; background-color: #fff; padding: 10px; border-bottom: 1px solid #ddd; z-index: 20; }}
-            .toc a {{ margin-right: 15px; color: #3498db; text-decoration: none; }}
-            .toc a:hover {{ text-decoration: underline; }}
-            .controls {{ margin-bottom: 10px; }}
-            .control-btn {{ background-color: #3498db; color: white; padding: 8px 12px; margin-right: 10px; border: none; border-radius: 3px; cursor: pointer; }}
-            .control-btn:hover {{ background-color: #2980b9; }}
-            @media (max-width: 768px) {{
-                table {{ font-size: 14px; }}
-                th, td {{ padding: 8px; }}
-                .toc {{ font-size: 14px; }}
-                .collapsible, .control-btn {{ font-size: 14px; padding: 8px; }}
-            }}
-            @media (max-width: 480px) {{
-                table {{ display: block; overflow-x: auto; }}
-                th, td {{ min-width: 100px; }}
-            }}
+            body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f9f9f9; color: #333; }
+            h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+            h2 { color: #34495e; margin-top: 30px; }
+            .section { background-color: #fff; padding: 20px; margin-bottom: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+            th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+            th { background-color: #3498db; color: white; position: sticky; top: 0; z-index: 10; }
+            tr:nth-child(even) { background-color: #f2f2f2; }
+            .collapsible { background-color: #34495e; color: white; padding: 10px; cursor: pointer; border: none; border-radius: 3px; display: inline-block; margin: 5px 0; }
+            .collapsible:hover { background-color: #2c3e50; }
+            .content { display: none; padding: 10px; }
+            .core-yes { color: #27ae60; font-weight: bold; }
+            .core-no { color: #e74c3c; }
+            .risk-low { color: #27ae60; }
+            .risk-medium { color: #f39c12; }
+            .risk-high { color: #e74c3c; }
+            .risk-bar { background-color: #ddd; height: 10px; border-radius: 5px; overflow: hidden; margin: 5px 0; }
+            .risk-bar-fill { height: 100%; transition: width 0.3s; }
+            .risk-bar-low { background-color: #27ae60; }
+            .risk-bar-medium { background-color: #f39c12; }
+            .risk-bar-high { background-color: #e74c3c; }
+            .toc { position: sticky; top: 0; background-color: #fff; padding: 10px; border-bottom: 1px solid #ddd; z-index: 20; }
+            .toc a { margin-right: 15px; color: #3498db; text-decoration: none; }
+            .toc a:hover { text-decoration: underline; }
+            .controls { margin-bottom: 10px; }
+            .control-btn { background-color: #3498db; color: white; padding: 8px 12px; margin-right: 10px; border: none; border-radius: 3px; cursor: pointer; }
+            .control-btn:hover { background-color: #2980b9; }
+            @media (max-width: 768px) {
+                table { font-size: 14px; }
+                th, td { padding: 8px; }
+                .toc { font-size: 14px; }
+                .collapsible, .control-btn { font-size: 14px; padding: 8px; }
+            }
+            @media (max-width: 480px) {
+                table { display: block; overflow-x: auto; }
+                th, td { min-width: 100px; }
+            }
         </style>
     </head>
     <body>
@@ -400,23 +475,23 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
         </div>
 
         <script>
-            function toggleCVE(controlId) {{ 
+            function toggleCVE(controlId) { 
                 var content = document.getElementById('cve_' + controlId);
                 var button = document.querySelector('button[aria-controls="cve_' + controlId + '"]');
                 var isExpanded = content.style.display === 'block';
                 content.style.display = isExpanded ? 'none' : 'block';
                 button.setAttribute('aria-expanded', !isExpanded);
-            }}
-            function toggleAll(expand) {{
+            }
+            function toggleAll(expand) {
                 var contents = document.querySelectorAll('.content');
                 var buttons = document.querySelectorAll('.collapsible');
-                contents.forEach(function(content) {{
+                contents.forEach(function(content) {
                     content.style.display = expand ? 'block' : 'none';
-                }});
-                buttons.forEach(function(button) {{
+                });
+                buttons.forEach(function(button) {
                     button.setAttribute('aria-expanded', expand);
-                }});
-            }}
+                });
+            }
         </script>
     </body>
     </html>
