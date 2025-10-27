@@ -5,11 +5,25 @@ import logging
 import csv
 from datetime import datetime
 import statistics
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def load_core_controls(file_path):
+    """
+    Load core NIST SP 800-53 controls from a CSV file into a set.
+
+    Args:
+        file_path (str): Path to the CSV file containing core control IDs.
+
+    Returns:
+        set: Set of core control IDs (uppercase).
+
+    Raises:
+        FileNotFoundError: If the core controls file is not found.
+        Exception: For other errors during file reading.
+    """
     core_controls = set()
     try:
         with open(file_path, 'r') as f:
@@ -24,7 +38,38 @@ def load_core_controls(file_path):
         logger.error(f"Error reading core controls file {file_path}: {e}")
     return core_controls
 
-def generate_json(control_to_risk, nist_controls, cve_details, output_file, core_controls_file='core_controls.csv'):
+def ensure_output_directory(output_dir='output'):
+    """
+    Ensure the output directory exists, creating it if necessary.
+
+    Args:
+        output_dir (str): Path to the output directory.
+
+    Returns:
+        None
+    """
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+        logger.debug(f"Output directory {output_dir} ensured")
+    except Exception as e:
+        logger.error(f"Failed to create output directory {output_dir}: {e}")
+        raise
+
+def generate_json(control_to_risk, nist_controls, cve_details, output_file='output/risk_assessment.json', core_controls_file='core_controls.csv'):
+    """
+    Generate a JSON file with risk assessment data for NIST controls.
+
+    Args:
+        control_to_risk (dict): Mapping of controls to their risk scores and associated CVEs.
+        nist_controls (dict): NIST SP 800-53 control catalog.
+        cve_details (dict): Details of CVEs (name, description, due date).
+        output_file (str): Path to the output JSON file. Defaults to 'output/risk_assessment.json'.
+        core_controls_file (str): Path to the core controls CSV file.
+
+    Returns:
+        None
+    """
+    ensure_output_directory(os.path.dirname(output_file))
     core_controls = load_core_controls(core_controls_file)
     
     if not control_to_risk:
@@ -55,10 +100,29 @@ def generate_json(control_to_risk, nist_controls, cve_details, output_file, core
             continue
     
     data.sort(key=lambda x: x['total_risk'], reverse=True)
-    with open(output_file, 'w') as f:
-        json.dump(data, f, indent=2)
+    try:
+        with open(output_file, 'w') as f:
+            json.dump(data, f, indent=2)
+        logger.info(f"JSON output written to {output_file}")
+    except Exception as e:
+        logger.error(f"Failed to write JSON to {output_file}: {e}")
+        raise
 
-def generate_csv(control_to_risk, nist_controls, cve_details, output_file, core_controls_file='core_controls.csv'):
+def generate_csv(control_to_risk, nist_controls, cve_details, output_file='output/risk_assessment.csv', core_controls_file='core_controls.csv'):
+    """
+    Generate a CSV file with risk assessment data for NIST controls.
+
+    Args:
+        control_to_risk (dict): Mapping of controls to their risk scores and associated CVEs.
+        nist_controls (dict): NIST SP 800-53 control catalog.
+        cve_details (dict): Details of CVEs (name, description, due date).
+        output_file (str): Path to the output CSV file. Defaults to 'output/risk_assessment.csv'.
+        core_controls_file (str): Path to the core controls CSV file.
+
+    Returns:
+        None
+    """
+    ensure_output_directory(os.path.dirname(output_file))
     core_controls = load_core_controls(core_controls_file)
     
     if not control_to_risk:
@@ -95,11 +159,31 @@ def generate_csv(control_to_risk, nist_controls, cve_details, output_file, core_
     try:
         df = df.sort_values(by="total_risk", ascending=False)
         df.to_csv(output_file, index=False)
+        logger.info(f"CSV output written to {output_file}")
     except KeyError as e:
         logger.error(f"Failed to sort CSV DataFrame: {e}")
         df.to_csv(output_file, index=False)
+        raise
+    except Exception as e:
+        logger.error(f"Failed to write CSV to {output_file}: {e}")
+        raise
 
-def generate_html(control_to_risk, nist_controls, cve_details, total_cves, output_file, core_controls_file='core_controls.csv'):
+def generate_html(control_to_risk, nist_controls, cve_details, total_cves, output_file='output/risk_assessment.html', core_controls_file='core_controls.csv'):
+    """
+    Generate an HTML report with risk assessment data for NIST controls.
+
+    Args:
+        control_to_risk (dict): Mapping of controls to their risk scores and associated CVEs.
+        nist_controls (dict): NIST SP 800-53 control catalog.
+        cve_details (dict): Details of CVEs (name, description, due date).
+        total_cves (int): Total number of CVEs analyzed.
+        output_file (str): Path to the output HTML file. Defaults to 'output/risk_assessment.html'.
+        core_controls_file (str): Path to the core controls CSV file.
+
+    Returns:
+        None
+    """
+    ensure_output_directory(os.path.dirname(output_file))
     core_controls = load_core_controls(core_controls_file)
     
     # Sort controls by total_risk in descending order
@@ -220,7 +304,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
                     <th scope="col">Associated CVEs</th>
                 </tr>
     """.format(
-        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),  # June 18, 2025 at 02:37 PM CDT
+        generation_date=datetime.now().strftime("%B %d, %Y at %I:%M %p CDT"),
         total_cves=total_cves,
         total_controls=total_controls,
         core_control_count=core_control_count,
@@ -338,5 +422,10 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, outpu
     </html>
     """.format(year=datetime.now().year)
 
-    with open(output_file, 'w') as f:
-        f.write(html_content)
+    try:
+        with open(output_file, 'w') as f:
+            f.write(html_content)
+        logger.info(f"HTML output written to {output_file}")
+    except Exception as e:
+        logger.error(f"Failed to write HTML to {output_file}: {e}")
+        raise
