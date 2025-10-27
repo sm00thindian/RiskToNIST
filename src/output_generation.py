@@ -18,7 +18,7 @@ def load_config(config_file='config.json'):
         config_file (str): Path to the configuration file. Defaults to 'config.json'.
 
     Returns:
-        dict: Configuration data with output settings.
+        dict: Configuration data with output and logging settings.
 
     Raises:
         FileNotFoundError: If the config file is not found.
