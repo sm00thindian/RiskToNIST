@@ -2,19 +2,44 @@
 
 # setup.sh: Script to set up and run the RiskToNIST project.
 # Ensures Python dependencies are installed, data files are present, output directory is created,
-# and executes the main script. Outputs are logged to run.log with rotation.
+# and executes the main script. Manages log rotation with configurable retention period.
 
 set -e  # Exit on any error
 
-# Function to rotate run.log
+# Function to rotate run.log and enforce retention policy
 rotate_log() {
     local log_file="run.log"
+    local config_file="config.json"
+    local retention_days=30  # Default retention period
+
+    # Read retention_days from config.json if available
+    if command -v jq &> /dev/null && [ -f "$config_file" ]; then
+        retention_days=$(jq -r '.logging.retention_days // 30' "$config_file" 2>/dev/null) || {
+            echo "Warning: Failed to parse retention_days from $config_file. Using default ($retention_days days)."
+        }
+        # Validate retention_days is a positive integer
+        if ! [[ "$retention_days" =~ ^[0-9]+$ ]] || [ "$retention_days" -le 0 ]; then
+            echo "Warning: Invalid retention_days ($retention_days) in $config_file. Using default (30 days)."
+            retention_days=30
+        fi
+    else
+        echo "Warning: jq not installed or $config_file missing. Using default retention period ($retention_days days)."
+    fi
+
+    # Rotate existing run.log
     if [ -f "$log_file" ]; then
         local timestamp=$(date +%Y%m%d_%H%M)
         mv "$log_file" "${log_file%.*}_$timestamp.log" || {
             echo "Warning: Failed to rotate $log_file. Continuing..."
         }
     fi
+
+    # Clean up old log files based on retention_days
+    echo "Cleaning up log files older than $retention_days days..."
+    find . -name "run_*.log" -mtime "+$retention_days" -delete 2>/dev/null || {
+        echo "Warning: Failed to delete old log files. Check permissions."
+    }
+
     # Redirect all output to new run.log
     exec > >(tee -a run.log) 2>&1
 }
