@@ -251,4 +251,18 @@ run_main() {
         exit 1
     }
     [ -f "src/env/main.py" ] || { echo "Error: src/env/main.py not found" >&2; exit 1; }
-    python3 src/env/main
+    python3 src/env/main.py || {
+        echo "Error: Failed to execute src/env/main.py" >&2
+        exit 1
+    }
+}
+
+# Main execution
+echo "Starting RiskToNIST execution..."
+rotate_log
+ensure_output_directory
+check_requirements
+check_data_files
+run_main
+rm -f temp_setup_errors.log 2>/dev/null
+echo "Execution completed. Check logs/run.log for details and output files in the 'output' directory (risk_assessment*)."
