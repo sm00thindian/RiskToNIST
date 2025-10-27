@@ -145,6 +145,9 @@ check_data_files() {
 
     # Read sources from config.json
     local sources
+    local failed_downloads=""
+    local success_count=0
+    local total_count=0
     if [ -f "config.json" ] && [ -r "config.json" ]; then
         sources=$(python3 -c "import json; print('\n'.join(s['output'] for s in json.load(open('config.json')).get('sources', []) if s.get('enabled', True)))" 2>>temp_setup_errors.log) || {
             echo "Warning: Failed to parse sources from config.json. Using default file list. See temp_setup_errors.log." >&2
@@ -184,25 +187,59 @@ check_data_files() {
     while IFS= read -r output_filename; do
         [ -z "$output_filename" ] && continue
         local file="data/$output_filename"
+        ((total_count++))
         if [ ! -f "$file" ] || [ ! -s "$file" ]; then
             echo "Warning: $file not found or empty. Attempting to download..."
             local attempt=1
             while [ $attempt -le $max_retries ]; do
                 echo "Download attempt $attempt of $max_retries for $output_filename..."
                 if python3 utils/parse_config.py download "$output_filename" 2>>temp_setup_errors.log; then
+                    ((success_count++))
                     break
                 else
                     echo "Warning: Download attempt $attempt failed for $output_filename. See temp_setup_errors.log." >&2
                     if [ $attempt -eq $max_retries ]; then
                         echo "Error: Failed to download $output_filename after $max_retries attempts." >&2
-                        exit 1
+                        failed_downloads="$failed_downloads $output_filename"
                     fi
                     sleep $retry_delay
                     ((attempt++))
                 fi
             done
+        else
+            # Validate existing JSON file
+            if [[ "$output_filename" == *.json ]]; then
+                python3 -c "import json; json.load(open('$file'))" 2>/dev/null || {
+                    echo "Warning: Invalid JSON in $file. Attempting to redownload..."
+                    local attempt=1
+                    while [ $attempt -le $max_retries ]; do
+                        echo "Download attempt $attempt of $max_retries for $output_filename..."
+                        if python3 utils/parse_config.py download "$output_filename" 2>>temp_setup_errors.log; then
+                            ((success_count++))
+                            break
+                        else
+                            echo "Warning: Download attempt $attempt failed for $output_filename. See temp_setup_errors.log." >&2
+                            if [ $attempt -eq $max_retries ]; then
+                                echo "Error: Failed to download $output_filename after $max_retries attempts." >&2
+                                failed_downloads="$failed_downloads $output_filename"
+                            fi
+                            sleep $retry_delay
+                            ((attempt++))
+                        fi
+                    done
+                }
+            else
+                ((success_count++))
+            fi
         fi
     done <<< "$sources"
+
+    # Print download summary
+    echo "Download summary: $success_count/$total_count files successfully downloaded."
+    if [ -n "$failed_downloads" ]; then
+        echo "Failed downloads:$failed_downloads"
+        echo "Continuing execution despite download failures. Check logs/download.log and temp_setup_errors.log for details."
+    fi
 }
 
 # Function to run the main script
@@ -214,18 +251,4 @@ run_main() {
         exit 1
     }
     [ -f "src/env/main.py" ] || { echo "Error: src/env/main.py not found" >&2; exit 1; }
-    python3 src/env/main.py || {
-        echo "Error: Failed to execute src/env/main.py" >&2
-        exit 1
-    }
-}
-
-# Main execution
-echo "Starting RiskToNIST execution..."
-rotate_log
-ensure_output_directory
-check_requirements
-check_data_files
-run_main
-rm -f temp_setup_errors.log 2>/dev/null
-echo "Execution completed. Check logs/run.log for details and output files in the 'output' directory (risk_assessment*)."
+    python3 src/env/main
