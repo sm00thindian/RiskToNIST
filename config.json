@@ -30,5 +30,10 @@
       "output": "nist_sp800_53_catalog.json",
       "enabled": true
     }
-  ]
+  ],
+  "output": {
+    "directory": "output",
+    "prefix": "risk_assessment",
+    "append_timestamp": false
+  }
 }
