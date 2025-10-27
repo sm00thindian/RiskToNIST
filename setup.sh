@@ -1,13 +1,23 @@
 #!/bin/bash
 
 # setup.sh: Script to set up and run the RiskToNIST project.
-# Ensures Python dependencies are installed, data files are present, and executes the main script.
-# Outputs are logged to run.log for traceability.
+# Ensures Python dependencies are installed, data files are present, output directory is created,
+# and executes the main script. Outputs are logged to run.log with rotation.
 
 set -e  # Exit on any error
 
-# Redirect all output to run.log
-exec > >(tee -a run.log) 2>&1
+# Function to rotate run.log
+rotate_log() {
+    local log_file="run.log"
+    if [ -f "$log_file" ]; then
+        local timestamp=$(date +%Y%m%d_%H%M)
+        mv "$log_file" "${log_file%.*}_$timestamp.log" || {
+            echo "Warning: Failed to rotate $log_file. Continuing..."
+        }
+    fi
+    # Redirect all output to new run.log
+    exec > >(tee -a run.log) 2>&1
+}
 
 # Function to ensure the output directory exists
 ensure_output_directory() {
@@ -86,10 +96,12 @@ EOF
 # Function to run the main script
 run_main() {
     echo "Executing main script..."
+    [ -f "run.py" ] || { echo "Error: run.py not found"; exit 1; }
     python3 run.py || {
         echo "Error: Failed to execute run.py"
         exit 1
     }
+    [ -f "src/env/main.py" ] || { echo "Error: src/env/main.py not found"; exit 1; }
     python3 src/env/main.py || {
         echo "Error: Failed to execute src/env/main.py"
         exit 1
@@ -98,9 +110,10 @@ run_main() {
 
 # Main execution
 echo "Starting RiskToNIST execution..."
+rotate_log
 ensure_output_directory
 check_requirements
 check_data_files
 run_main
 
-echo "Execution completed. Check run.log for details and output files in the 'output' directory (risk_assessment.*)."
+echo "Execution completed. Check run.log for details and output files in the 'output' directory (risk_assessment*)."
