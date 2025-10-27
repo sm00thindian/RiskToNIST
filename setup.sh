@@ -1,64 +1,85 @@
 #!/bin/bash
 
 # setup.sh: Script to set up and run the RiskToNIST project.
-# Ensures Python dependencies are installed, data files are present, output directory is created,
-# and executes the main script. Manages log rotation with configurable retention period using Python.
+# Ensures Python dependencies are installed, data files are present, output and log directories
+# are created, and executes the main script. Manages log rotation with configurable retention
+# period and maximum file limit.
 
 set -e  # Exit on any error
 
 # Function to rotate run.log and enforce retention policy
 rotate_log() {
-    local log_file="run.log"
     local config_file="config.json"
-    local retention_days=30  # Default retention period
+    local log_dir="logs"
+    local log_file="run.log"
+    local retention_days=30
+    local max_log_files=10
 
-    # Read retention_days from config.json using Python
+    # Read logging settings from config.json using Python
     if [ -f "$config_file" ]; then
-        cat << EOF > temp_config_parser.py
-import json
-import sys
-
-try:
-    with open('$config_file', 'r') as f:
-        config = json.load(f)
-    retention_days = config.get('logging', {}).get('retention_days', 30)
-    if not isinstance(retention_days, int) or retention_days <= 0:
-        print(f"Warning: Invalid retention_days ({retention_days}) in $config_file. Using default (30 days).")
-        retention_days = 30
-    print(retention_days)
-except Exception as e:
-    print(f"Warning: Failed to parse retention_days from $config_file: {e}. Using default (30 days).")
-    print(30)
-EOF
-        retention_days=$(python3 temp_config_parser.py 2>/dev/null) || {
-            echo "Warning: Failed to run config parser. Using default retention period ($retention_days days)."
+        log_dir=$(python3 utils/parse_config.py get logging.directory logs 2>/dev/null) || {
+            echo "Warning: Failed to parse logging.directory. Using default ($log_dir)."
         }
-        rm -f temp_config_parser.py
+        retention_days=$(python3 utils/parse_config.py get logging.retention_days 30 2>/dev/null) || {
+            echo "Warning: Failed to parse logging.retention_days. Using default ($retention_days)."
+        }
+        max_log_files=$(python3 utils/parse_config.py get logging.max_log_files 10 2>/dev/null) || {
+            echo "Warning: Failed to parse logging.max_log_files. Using default ($max_log_files)."
+        }
+
+        # Validate retention_days and max_log_files
+        if ! [[ "$retention_days" =~ ^[0-9]+$ ]] || [ "$retention_days" -le 0 ]; then
+            echo "Warning: Invalid retention_days ($retention_days) in $config_file. Using default (30 days)."
+            retention_days=30
+        fi
+        if ! [[ "$max_log_files" =~ ^[0-9]+$ ]] || [ "$max_log_files" -le 0 ]; then
+            echo "Warning: Invalid max_log_files ($max_log_files) in $config_file. Using default (10)."
+            max_log_files=10
+        fi
     else
-        echo "Warning: $config_file missing. Using default retention period ($retention_days days)."
+        echo "Warning: $config_file missing. Using default logging settings (dir=$log_dir, retention=$retention_days days, max_files=$max_log_files)."
     fi
 
+    # Ensure log directory exists
+    mkdir -p "$log_dir" || {
+        echo "Error: Failed to create log directory $log_dir"
+        exit 1
+    }
+
     # Rotate existing run.log
-    if [ -f "$log_file" ]; then
+    local full_log_file="$log_dir/$log_file"
+    if [ -f "$full_log_file" ]; then
         local timestamp=$(date +%Y%m%d_%H%M)
-        mv "$log_file" "${log_file%.*}_$timestamp.log" || {
-            echo "Warning: Failed to rotate $log_file. Continuing..."
+        mv "$full_log_file" "$log_dir/${log_file%.*}_$timestamp.log" || {
+            echo "Warning: Failed to rotate $full_log_file. Continuing..."
         }
     fi
 
     # Clean up old log files based on retention_days
     echo "Cleaning up log files older than $retention_days days..."
-    find . -name "run_*.log" -mtime "+$retention_days" -delete 2>/dev/null || {
+    find "$log_dir" -name "run_*.log" -mtime "+$retention_days" -delete 2>/dev/null || {
         echo "Warning: Failed to delete old log files. Check permissions."
     }
 
+    # Enforce maximum log file limit
+    echo "Enforcing maximum of $max_log_files log files..."
+    ls -t "$log_dir/run_*.log" 2>/dev/null | tail -n +"$((max_log_files + 1))" | xargs -I {} rm "$log_dir/{}" 2>/dev/null || {
+        echo "Warning: Failed to enforce max_log_files limit. Check permissions."
+    }
+
     # Redirect all output to new run.log
-    exec > >(tee -a run.log) 2>&1
+    exec > >(tee -a "$full_log_file") 2>&1
 }
 
 # Function to ensure the output directory exists
 ensure_output_directory() {
     local output_dir="output"
+    # Read output directory from config.json
+    if [ -f "config.json" ]; then
+        output_dir=$(python3 utils/parse_config.py get output.directory output 2>/dev/null) || {
+            echo "Warning: Failed to parse output.directory. Using default ($output_dir)."
+        }
+    fi
     echo "Ensuring output directory exists..."
     mkdir -p "$output_dir" || {
         echo "Error: Failed to create output directory $output_dir"
@@ -101,31 +122,10 @@ check_data_files() {
     for file in "${data_files[@]}"; do
         if [ ! -f "$file" ]; then
             echo "Warning: $file not found in data/. Attempting to download..."
-            # Create a temporary Python script to handle download
-            cat << EOF > temp_download.py
-import json
-from src.data_ingestion import download_data
-
-try:
-    with open('config.json', 'r') as f:
-        config = json.load(f)
-    sources = [s for s in config['sources'] if s['output'] == '$(basename "$file")']
-    if not sources:
-        print(f"Error: No source found for $(basename "$file") in config.json")
-        exit(1)
-    download_data(sources)
-except Exception as e:
-    print(f"Error: Failed to download $(basename "$file"). Check download.log for details.")
-    print(f"For attack_mapping.json or kev_attack_mapping.json, consider using local files:")
-    print(f"  cp /path/to/$(basename "$file") data/$(basename "$file")")
-    print(f"Update config.json with: \"url\": \"file:///path/to/$(basename "$file")\"")
-    exit(1)
-EOF
-            python3 temp_download.py || {
-                rm -f temp_download.py
+            python3 utils/parse_config.py download "$(basename "$file")" || {
+                echo "Error: Failed to download $file"
                 exit 1
             }
-            rm -f temp_download.py
         fi
     done
 }
@@ -153,4 +153,4 @@ check_requirements
 check_data_files
 run_main
 
-echo "Execution completed. Check run.log for details and output files in the 'output' directory (risk_assessment*)."
+echo "Execution completed. Check logs/run.log for details and output files in the 'output' directory (risk_assessment*)."
