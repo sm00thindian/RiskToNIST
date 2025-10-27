@@ -186,7 +186,7 @@ check_data_files() {
     local retry_delay=5
     while IFS= read -r output_filename; do
         [ -z "$output_filename" ] && continue
-        local file="data/$output_filename"
+        local file="$data_dir/$output_filename"
         ((total_count++))
         if [ ! -f "$file" ] || [ ! -s "$file" ]; then
             echo "Warning: $file not found or empty. Attempting to download..."
@@ -199,7 +199,7 @@ check_data_files() {
                 else
                     echo "Warning: Download attempt $attempt failed for $output_filename. See temp_setup_errors.log." >&2
                     if [ $attempt -eq $max_retries ]; then
-                        echo "Error: Failed to download $output_filename after $max_retries attempts." >&2
+                        echo "Warning: Failed to download $output_filename after $max_retries attempts." >&2
                         failed_downloads="$failed_downloads $output_filename"
                     fi
                     sleep $retry_delay
@@ -209,8 +209,8 @@ check_data_files() {
         else
             # Validate existing JSON file
             if [[ "$output_filename" == *.json ]]; then
-                python3 -c "import json; json.load(open('$file'))" 2>/dev/null || {
-                    echo "Warning: Invalid JSON in $file. Attempting to redownload..."
+                python3 -c "import json; json.load(open('$file'))" 2>>temp_setup_errors.log || {
+                    echo "Warning: Invalid JSON in $file. Attempting to redownload..." >&2
                     local attempt=1
                     while [ $attempt -le $max_retries ]; do
                         echo "Download attempt $attempt of $max_retries for $output_filename..."
@@ -220,7 +220,7 @@ check_data_files() {
                         else
                             echo "Warning: Download attempt $attempt failed for $output_filename. See temp_setup_errors.log." >&2
                             if [ $attempt -eq $max_retries ]; then
-                                echo "Error: Failed to download $output_filename after $max_retries attempts." >&2
+                                echo "Warning: Failed to download $output_filename after $max_retries attempts." >&2
                                 failed_downloads="$failed_downloads $output_filename"
                             fi
                             sleep $retry_delay
@@ -237,8 +237,12 @@ check_data_files() {
     # Print download summary
     echo "Download summary: $success_count/$total_count files successfully downloaded."
     if [ -n "$failed_downloads" ]; then
-        echo "Failed downloads:$failed_downloads"
-        echo "Continuing execution despite download failures. Check logs/download.log and temp_setup_errors.log for details."
+        echo "Failed downloads:$failed_downloads" >&2
+        echo "Continuing execution despite download failures. Check logs/download.log and temp_setup_errors.log for details." >&2
+    fi
+    if [ $success_count -eq 0 ]; then
+        echo "Error: No files successfully downloaded. Check network, URLs, or logs for details." >&2
+        exit 1
     fi
 }
 
