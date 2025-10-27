@@ -23,15 +23,19 @@ def setup_logging(log_dir='logs'):
         None
     """
     try:
+        if not log_dir:
+            raise ValueError("Log directory cannot be empty")
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, 'run.log')
         handler = logging.FileHandler(log_file, mode='a')
         handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.INFO)
+        # Remove existing handlers to avoid duplicate logs
+        logger.handlers = []
         logger.addHandler(handler)
     except Exception as e:
-        print(f"Warning: Failed to set up logging to {log_file}: {e}. Using console output.")
+        print(f"Warning: Failed to set up logging to {log_dir}/run.log: {e}. Using console output.", file=sys.stderr)
         logging.basicConfig(level=logging.INFO)
 
 def load_config(config_file='config.json'):
@@ -45,31 +49,32 @@ def load_config(config_file='config.json'):
         dict: Configuration data with output and logging settings.
 
     Raises:
-        FileNotFoundError: If the config file is not found.
         json.JSONDecodeError: If the config file is invalid JSON.
     """
+    defaults = {
+        'output': {'directory': 'output', 'prefix': 'risk_assessment', 'append_timestamp': False},
+        'logging': {'directory': 'logs', 'retention_days': 30, 'max_log_files': 10}
+    }
     try:
         with open(config_file, 'r') as f:
             config = json.load(f)
-        # Set default output configuration if not specified
-        config.setdefault('output', {
-            'directory': 'output',
-            'prefix': 'risk_assessment',
-            'append_timestamp': False
-        })
-        # Set default logging configuration if not specified
-        config.setdefault('logging', {
-            'directory': 'logs',
-            'retention_days': 30,
-            'max_log_files': 10
-        })
+        # Set default configurations if not specified
+        config.setdefault('output', defaults['output'])
+        config.setdefault('logging', defaults['logging'])
+        # Validate logging settings
+        if not isinstance(config['logging']['retention_days'], int) or config['logging']['retention_days'] <= 0:
+            logger.warning(f"Invalid logging.retention_days in {config_file}. Using default (30).")
+            config['logging']['retention_days'] = defaults['logging']['retention_days']
+        if not isinstance(config['logging']['max_log_files'], int) or config['logging']['max_log_files'] <= 0:
+            logger.warning(f"Invalid logging.max_log_files in {config_file}. Using default (10).")
+            config['logging']['max_log_files'] = defaults['logging']['max_log_files']
+        if not config['logging']['directory']:
+            logger.warning(f"Invalid logging.directory in {config_file}. Using default (logs).")
+            config['logging']['directory'] = defaults['logging']['directory']
         return config
     except FileNotFoundError:
-        logger.warning(f"Config file {config_file} not found. Using default output settings.")
-        return {
-            'output': {'directory': 'output', 'prefix': 'risk_assessment', 'append_timestamp': False},
-            'logging': {'directory': 'logs', 'retention_days': 30, 'max_log_files': 10}
-        }
+        logger.warning(f"Config file {config_file} not found. Using default settings.")
+        return defaults
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in {config_file}: {e}")
         raise
@@ -119,6 +124,8 @@ def ensure_output_directory(output_dir):
         Exception: If the directory cannot be created.
     """
     try:
+        if not output_dir:
+            raise ValueError("Output directory cannot be empty")
         os.makedirs(output_dir, exist_ok=True)
         logger.debug(f"Output directory {output_dir} ensured")
     except Exception as e:
