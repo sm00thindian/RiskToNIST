@@ -33,10 +33,17 @@ def load_config(config_file='config.json'):
             'prefix': 'risk_assessment',
             'append_timestamp': False
         })
+        # Set default logging configuration if not specified
+        config.setdefault('logging', {
+            'retention_days': 30
+        })
         return config
     except FileNotFoundError:
         logger.warning(f"Config file {config_file} not found. Using default output settings.")
-        return {'output': {'directory': 'output', 'prefix': 'risk_assessment', 'append_timestamp': False}}
+        return {
+            'output': {'directory': 'output', 'prefix': 'risk_assessment', 'append_timestamp': False},
+            'logging': {'retention_days': 30}
+        }
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in {config_file}: {e}")
         raise
