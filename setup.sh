@@ -2,7 +2,7 @@
 
 # setup.sh: Script to set up and run the RiskToNIST project.
 # Ensures Python dependencies are installed, data files are present, output directory is created,
-# and executes the main script. Manages log rotation with configurable retention period.
+# and executes the main script. Manages log rotation with configurable retention period using Python.
 
 set -e  # Exit on any error
 
@@ -12,18 +12,30 @@ rotate_log() {
     local config_file="config.json"
     local retention_days=30  # Default retention period
 
-    # Read retention_days from config.json if available
-    if command -v jq &> /dev/null && [ -f "$config_file" ]; then
-        retention_days=$(jq -r '.logging.retention_days // 30' "$config_file" 2>/dev/null) || {
-            echo "Warning: Failed to parse retention_days from $config_file. Using default ($retention_days days)."
+    # Read retention_days from config.json using Python
+    if [ -f "$config_file" ]; then
+        cat << EOF > temp_config_parser.py
+import json
+import sys
+
+try:
+    with open('$config_file', 'r') as f:
+        config = json.load(f)
+    retention_days = config.get('logging', {}).get('retention_days', 30)
+    if not isinstance(retention_days, int) or retention_days <= 0:
+        print(f"Warning: Invalid retention_days ({retention_days}) in $config_file. Using default (30 days).")
+        retention_days = 30
+    print(retention_days)
+except Exception as e:
+    print(f"Warning: Failed to parse retention_days from $config_file: {e}. Using default (30 days).")
+    print(30)
+EOF
+        retention_days=$(python3 temp_config_parser.py 2>/dev/null) || {
+            echo "Warning: Failed to run config parser. Using default retention period ($retention_days days)."
         }
-        # Validate retention_days is a positive integer
-        if ! [[ "$retention_days" =~ ^[0-9]+$ ]] || [ "$retention_days" -le 0 ]; then
-            echo "Warning: Invalid retention_days ($retention_days) in $config_file. Using default (30 days)."
-            retention_days=30
-        fi
+        rm -f temp_config_parser.py
     else
-        echo "Warning: jq not installed or $config_file missing. Using default retention period ($retention_days days)."
+        echo "Warning: $config_file missing. Using default retention period ($retention_days days)."
     fi
 
     # Rotate existing run.log
