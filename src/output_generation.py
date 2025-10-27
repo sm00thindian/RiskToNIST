@@ -1,3 +1,8 @@
+"""
+output_generation.py: Generates JSON, CSV, and HTML reports for RiskToNist project.
+Handles NIST SP 800-53 control risk assessments based on CVE data.
+"""
+
 import json
 import pandas as pd
 import plotly.express as px
@@ -7,8 +12,27 @@ from datetime import datetime
 import statistics
 import os
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+def setup_logging(log_dir='logs'):
+    """
+    Set up logging to write to a file in the specified directory.
+
+    Args:
+        log_dir (str): Directory for log files. Defaults to 'logs'.
+
+    Returns:
+        None
+    """
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, 'run.log')
+        handler = logging.FileHandler(log_file, mode='a')
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+    except Exception as e:
+        print(f"Warning: Failed to set up logging to {log_file}: {e}. Using console output.")
+        logging.basicConfig(level=logging.INFO)
 
 def load_config(config_file='config.json'):
     """
@@ -35,14 +59,16 @@ def load_config(config_file='config.json'):
         })
         # Set default logging configuration if not specified
         config.setdefault('logging', {
-            'retention_days': 30
+            'directory': 'logs',
+            'retention_days': 30,
+            'max_log_files': 10
         })
         return config
     except FileNotFoundError:
         logger.warning(f"Config file {config_file} not found. Using default output settings.")
         return {
             'output': {'directory': 'output', 'prefix': 'risk_assessment', 'append_timestamp': False},
-            'logging': {'retention_days': 30}
+            'logging': {'directory': 'logs', 'retention_days': 30, 'max_log_files': 10}
         }
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in {config_file}: {e}")
@@ -131,6 +157,7 @@ def generate_json(control_to_risk, nist_controls, cve_details, config_file='conf
         None
     """
     config = load_config(config_file)
+    setup_logging(config['logging']['directory'])
     output_file = get_output_filename(
         config['output']['directory'],
         config['output']['prefix'],
@@ -191,6 +218,7 @@ def generate_csv(control_to_risk, nist_controls, cve_details, config_file='confi
         None
     """
     config = load_config(config_file)
+    setup_logging(config['logging']['directory'])
     output_file = get_output_filename(
         config['output']['directory'],
         config['output']['prefix'],
@@ -259,6 +287,7 @@ def generate_html(control_to_risk, nist_controls, cve_details, total_cves, confi
         None
     """
     config = load_config(config_file)
+    setup_logging(config['logging']['directory'])
     output_file = get_output_filename(
         config['output']['directory'],
         config['output']['prefix'],
